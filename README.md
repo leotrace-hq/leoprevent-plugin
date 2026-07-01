@@ -11,7 +11,8 @@ Install:
 /plugin marketplace add leotrace-hq/leoprevent-plugin
 /plugin install leoprevent@leotrace
 ```
-It's a hooks plugin, so it won't appear under `/plugins` — confirm it with `/hooks`.
+It shows up under `/plugin` (Installed plugins) and adds the `/leoprevent:set-license` command; its
+review runs as a `Stop` hook, which you can see in `/hooks`.
 
 Set your license key (once):
 ```
