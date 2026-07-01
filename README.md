@@ -4,34 +4,43 @@ Security review built into **Claude Code** and **Codex**. When the agent finishe
 LeoPrevent reviews what it just wrote — and if there's a security issue, sends the agent back
 to fix it before you see "done."
 
-## Install
+## Claude Code
 
-**Claude Code**
+Install:
 ```
 /plugin marketplace add leotrace-hq/leoprevent-plugin
 /plugin install leoprevent@leotrace
 ```
-It's a hooks plugin, so it won't show under `/plugins` — confirm it with `/hooks`.
+It's a hooks plugin, so it won't appear under `/plugins` — confirm it with `/hooks`.
 
-**Codex**
+Set your license key (once):
+```
+/leoprevent:set-license lp_live_your_key_here
+```
+
+Updates are automatic — you'll get a `/reload-plugins` prompt when a new version lands.
+
+## Codex
+
+Install:
 ```
 codex plugin marketplace add leotrace-hq/leoprevent-plugin
 ```
 Then enable **leoprevent** in the `/plugins` browser.
 
-**Set your license key** — once. In a Claude Code or Codex session, have the agent run:
+Set your license key (once). Codex has no slash command for this, so you run the plugin's own
+binary — **`leoprevent-plugin`** — with your key. Once the plugin is enabled it's on the agent's
+`PATH`, so just ask Codex to run:
 ```
 leoprevent-plugin set-license lp_live_your_key_here
 ```
-It's saved to `~/.config/leoprevent/`, so it survives updates.
+If you ever need the full path, the binary lives inside the installed plugin at
+`~/.codex/plugins/cache/leotrace/leoprevent/<version>/bin/leoprevent-plugin`.
 
-Now open a new session and work in a git repo as usual.
-
-## Updates
-
-- **Claude Code** updates automatically — you'll get a `/reload-plugins` prompt.
-- **Codex**: run `codex plugin marketplace upgrade`.
+To update: `codex plugin marketplace upgrade`.
 
 ## Good to know
 
-- If the server is unreachable or your key isn't set, the review is skipped — it never blocks you.
+- After installing, **open a new session** and work in a **git repo** — that's what the review runs against.
+- Your license key is saved to `~/.config/leoprevent/`, outside the plugin, so it **survives updates**.
+- If the server is unreachable or your key isn't set, the review is simply skipped — it never blocks you.
