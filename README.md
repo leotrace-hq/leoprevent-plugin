@@ -43,5 +43,8 @@ To update: `codex plugin marketplace upgrade`.
 ## Good to know
 
 - After installing, **open a new session** and work in a **git repo** — that's what the review runs against.
-- Your license key is saved to `~/.config/leoprevent/`, outside the plugin, so it **survives updates**.
+- Your license key is saved to your user config dir (`~/Library/Application Support/leoprevent/` on
+  macOS, `~/.config/leoprevent/` on Linux), outside the plugin, so it **survives updates**.
 - If the server is unreachable or your key isn't set, the review is simply skipped — it never blocks you.
+- **Windows:** works with Claude Code (the plugin ships a Windows binary; PowerShell, cmd, and Git
+  Bash are all covered). Codex on Windows is not supported yet.

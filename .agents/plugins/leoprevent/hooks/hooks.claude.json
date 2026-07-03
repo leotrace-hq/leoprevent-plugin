@@ -17,7 +17,7 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/leoprevent-plugin\" --agent=claude",
-            "timeout": 180
+            "timeout": 600
           }
         ]
       }

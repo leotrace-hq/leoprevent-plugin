@@ -15,6 +15,16 @@ arch=$(uname -m 2>/dev/null || echo unknown)
 case "$os" in
   Darwin) os=darwin ;;
   Linux)  os=linux ;;
+  MINGW*|MSYS*|CYGWIN*)
+    # Windows, reached through Git Bash (Claude Code uses Git Bash for hook
+    # commands when Git for Windows is installed). PowerShell/cmd never run this
+    # script — they resolve the extensionless hook command straight to the
+    # sibling leoprevent-plugin.exe via PATHEXT. Same fail-open contract.
+    win="$dir/leoprevent-plugin.exe"
+    if [ ! -f "$win" ]; then
+      echo "leoprevent: no Windows binary at $win — skipping review" >&2; exit 0
+    fi
+    exec "$win" "$@" ;;
   *) echo "leoprevent: unsupported OS '$os' — skipping review" >&2; exit 0 ;;
 esac
 case "$arch" in
