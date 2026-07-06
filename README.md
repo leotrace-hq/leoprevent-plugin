@@ -20,7 +20,10 @@ Set your license key (once):
 /leoprevent:set-license lp_live_your_key_here
 ```
 
-Updates are automatic — you'll get a `/reload-plugins` prompt when a new version lands.
+To update: open `/plugin`, refresh the `leotrace` marketplace, then update **leoprevent** to the
+latest version. Updates are **not** applied automatically — a fresh install or a plain restart uses
+whatever version your local marketplace index last cached, so refresh the marketplace first to be sure
+you're on the latest. Your license key survives the update.
 
 ## Codex
 
