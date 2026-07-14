@@ -39,8 +39,7 @@ codex plugin marketplace add leotrace-hq/leoprevent-plugin
 Then enable **leoprevent** in the `/plugins` browser.
 
 Set your license key (once). Codex has no slash command for this, so you run the plugin's own
-binary — **`leoprevent-plugin`** — with your key. It is **not** on your (or Codex's) `PATH`, so use
-the full path to the installed binary:
+binary — **`leoprevent-plugin`** — with your key, using the full path to the installed binary:
 ```
 ~/.codex/plugins/cache/leotrace/leoprevent/<version>/bin/leoprevent-plugin set-license lp_live_your_key_here
 ```
