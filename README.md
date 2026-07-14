@@ -25,6 +25,11 @@ latest version. Updates are **not** applied automatically — a fresh install or
 whatever version your local marketplace index last cached, so refresh the marketplace first to be sure
 you're on the latest. Your license key survives the update.
 
+_Optional — get updates automatically:_ in `/plugin`, open the **Marketplaces** tab, select
+`leotrace`, and enable auto-update. Claude Code then refreshes the marketplace in the background at
+session start and prompts `/reload-plugins` when a newer **leoprevent** is available, so you don't have
+to refresh by hand. (Off by default for third-party marketplaces like this one.)
+
 ## Codex
 
 Install:
@@ -34,13 +39,12 @@ codex plugin marketplace add leotrace-hq/leoprevent-plugin
 Then enable **leoprevent** in the `/plugins` browser.
 
 Set your license key (once). Codex has no slash command for this, so you run the plugin's own
-binary — **`leoprevent-plugin`** — with your key. Once the plugin is enabled it's on the agent's
-`PATH`, so just ask Codex to run:
+binary — **`leoprevent-plugin`** — with your key. It is **not** on your (or Codex's) `PATH`, so use
+the full path to the installed binary:
 ```
-leoprevent-plugin set-license lp_live_your_key_here
+~/.codex/plugins/cache/leotrace/leoprevent/<version>/bin/leoprevent-plugin set-license lp_live_your_key_here
 ```
-If you ever need the full path, the binary lives inside the installed plugin at
-`~/.codex/plugins/cache/leotrace/leoprevent/<version>/bin/leoprevent-plugin`.
+(Replace `<version>` with the installed version, e.g. `0.1.5`.)
 
 To update: `codex plugin marketplace upgrade`.
 
@@ -48,7 +52,8 @@ To update: `codex plugin marketplace upgrade`.
 
 - After installing, **open a new session** and work in a **git repo** — that's what the review runs against.
 - Your license key is saved to your user config dir (`~/Library/Application Support/leoprevent/` on
-  macOS, `~/.config/leoprevent/` on Linux), outside the plugin, so it **survives updates**.
+  macOS, `~/.config/leoprevent/` on Linux, `%AppData%\leoprevent\` on Windows), outside the plugin, so
+  it **survives updates**.
 - If the server is unreachable or your key isn't set, the review is simply skipped — it never blocks you.
 - **Windows:** works with Claude Code (the plugin ships a Windows binary; PowerShell, cmd, and Git
   Bash are all covered). Codex on Windows is not supported yet.
