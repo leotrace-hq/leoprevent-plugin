@@ -1,6 +1,6 @@
 # LeoPrevent
 
-Security review built into **Claude Code** and **Codex**. When the agent finishes a turn,
+Security review built into **Claude Code**, **Codex**, and **GitHub Copilot**. When the agent finishes a turn,
 LeoPrevent reviews what it just wrote — and if there's a security issue, sends the agent back
 to fix it before you see "done."
 
