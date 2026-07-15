@@ -47,6 +47,24 @@ binary — **`leoprevent-plugin`** — with your key, using the full path to the
 
 To update: `codex plugin marketplace upgrade`.
 
+## GitHub Copilot (VS Code)
+
+> **Beta.** Tested in VS Code agent mode; agent hooks are Preview in VS Code. If a review doesn't fire,
+> it fails open (never blocks you).
+
+Install:
+```
+Command Palette → "Chat: Install Plugin From Source"
+→ paste: https://github.com/leotrace-hq/leoprevent-plugin
+```
+The review runs as a `Stop` hook.
+
+Set your license key (once) — Copilot has no slash command, so run the installed binary directly with
+your key (full path to the installed `leoprevent-plugin`):
+```
+<plugin-dir>/leoprevent/bin/leoprevent-plugin set-license lp_live_your_key_here
+```
+
 ## Good to know
 
 - After installing, **open a new session** and work in a **git repo** — that's what the review runs against.

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "hooks": {
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "\"${PLUGIN_ROOT}/bin/leoprevent-plugin\" --agent=copilot",
+        "powershell": "& \"${PLUGIN_ROOT}\\bin\\leoprevent-plugin.exe\" --agent=copilot",
+        "timeoutSec": 30
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "\"${PLUGIN_ROOT}/bin/leoprevent-plugin\" --agent=copilot",
+        "powershell": "& \"${PLUGIN_ROOT}\\bin\\leoprevent-plugin.exe\" --agent=copilot",
+        "timeoutSec": 600
+      }
+    ]
+  }
+}
