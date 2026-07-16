@@ -47,12 +47,16 @@ To update: `codex plugin marketplace upgrade`.
 > **Beta.** Tested in VS Code agent mode; agent hooks are Preview in VS Code. If a review doesn't fire,
 > it fails open (never blocks you).
 
-Install: open the Command Palette (`Cmd/Ctrl+Shift+P`), run **"Chat: Install Plugin from Source"**, and
-paste:
-```
-https://github.com/leotrace-hq/leoprevent-plugin
-```
-The review runs as a `Stop` hook. Then set your license key — see [Set your license key](#set-your-license-key) below.
+Install:
+1. Open the Command Palette (`Cmd/Ctrl+Shift+P`) → run **"Chat: Install Plugin from Source"** → paste:
+   ```
+   https://github.com/leotrace-hq/leoprevent-plugin
+   ```
+2. **Restart the extension host when prompted** ("Restart Extensions", or reload the window) — the plugin
+   only activates after this.
+3. Set your license key — see [Set your license key](#set-your-license-key) below.
+
+The review then runs as a `Stop` hook.
 
 ## Set your license key
 

@@ -11,7 +11,7 @@
       "name": "leoprevent",
       "description": "Makes GitHub Copilot generate more secure code. A Stop hook re-wakes the agent to review and fix its own changes against LeoTrace's security rules before the developer sees \"done\".",
       "version": "0.1.7",
-      "source": "./.agents/plugins/leoprevent"
+      "source": "./copilot/leoprevent"
     }
   ]
 }
