@@ -54,15 +54,20 @@ Install:
    ```
 2. **Restart the extension host when prompted** ("Restart Extensions", or reload the window) — the plugin
    only activates after this.
-3. Set your license key — see [Set your license key](#set-your-license-key) below.
+3. Set your license key (once) — in Copilot chat, run:
+   ```
+   /leoprevent set-license lp_live_your_key_here
+   ```
+   (Copilot asks for confirmation before running the save command.) Alternatively, create the
+   key file by hand — see [Set your license key](#set-your-license-key) below.
 
 The review then runs as a `Stop` hook.
 
 ## Set your license key
 
-Applies to **Codex** and **Copilot** (Claude Code uses the `/leoprevent:set-license` command instead).
-Your key is a small JSON file in your user config dir — create it once; it survives plugin updates.
-Replace `lp_live_your_key_here` with your key.
+Applies to **Codex** (and works as a fallback for Copilot; Claude Code uses `/leoprevent:set-license`
+and Copilot `/leoprevent set-license` instead). Your key is a small JSON file in your user config
+dir — create it once; it survives plugin updates. Replace `lp_live_your_key_here` with your key.
 
 **macOS:**
 ```bash
