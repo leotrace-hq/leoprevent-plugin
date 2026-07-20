@@ -44,8 +44,8 @@ To update: `codex plugin marketplace upgrade`.
 
 ## GitHub Copilot (VS Code)
 
-> **Beta.** Tested in VS Code agent mode; agent hooks are Preview in VS Code. If a review doesn't fire,
-> it fails open (never blocks you).
+> Agent hooks are a Preview feature in VS Code. If a review ever doesn't fire, it fails open
+> (never blocks you).
 
 Install:
 1. Open the Command Palette (`Cmd/Ctrl+Shift+P`) → run **"Chat: Install Plugin from Source"** → paste:
