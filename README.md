@@ -63,6 +63,10 @@ Install:
 
 The review then runs as a `Stop` hook.
 
+To update: Command Palette → **"Chat: Update Plugins"** (or the documented equivalent
+**"Extensions: Check for Extension Updates"**), then reload the window. (Re-running
+"Chat: Install Plugin from Source" does **not** update an existing install.)
+
 ## Set your license key
 
 Applies to **Codex** (and works as a fallback for Copilot; Claude Code uses `/leoprevent:set-license`
