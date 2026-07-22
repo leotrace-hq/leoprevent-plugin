@@ -15,10 +15,22 @@ Install:
 It shows up under `/plugin` (Installed plugins) and adds the `/leoprevent:set-license` command; its
 review runs as a `Stop` hook, which you can see in `/hooks`.
 
+**Using the Claude Code desktop app (Code tab)?** There's no `/plugin` command there — add the
+marketplace through the UI instead:
+
+1. In the message box, open the **`+`** menu → **Add plugins…**. This opens the plugin **Directory**.
+2. Click **Add marketplace**, paste `https://github.com/leotrace-hq/leoprevent-plugin`, and click
+   **Sync**. (A trust warning appears — expected for a third-party marketplace.)
+3. Find **leoprevent** in the Directory and **install** it, then **restart the app** — plugins load at
+   startup, so the hook and the `/leoprevent:set-license` command aren't active until you restart.
+
 Set your license key (once):
 ```
 /leoprevent:set-license lp_live_your_key_here
 ```
+(In the desktop app, run this **after** the restart above — before that it reads as an unknown command
+because the plugin isn't loaded yet. If your agent won't run it, set the key by hand — see
+[Set your license key](#set-your-license-key) below.)
 
 To update: open `/plugin`, refresh the `leotrace` marketplace, then update **leoprevent** to the
 latest version. Updates are **not** applied automatically — a fresh install or a plain restart uses
