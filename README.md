@@ -76,7 +76,7 @@ through your repo and the environment settings:
 2. **Allow the server:** in the cloud environment's network access, choose **Custom** and add
    `leoprevent.fly.dev` to **Allowed domains** — otherwise the hook can't reach the server and the review
    is skipped (fail-open).
-3. **Set your license key:** open the environment's **⋯** menu → **Edit environment**, and add
+3. **Set your license key:** open the environment's **⋮** menu → **Edit environment**, and add
    `LEOPREVENT_LICENSE_KEY` as an environment variable there.
 
 ## Codex
