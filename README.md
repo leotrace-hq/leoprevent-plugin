@@ -77,7 +77,7 @@ through your repo and the environment settings:
    `leoprevent.fly.dev` to **Allowed domains** — otherwise the hook can't reach the server and the review
    is skipped (fail-open).
 3. **Set your license key** as the `LEOPREVENT_LICENSE_KEY` environment variable in the environment's
-   settings (the local `license.json` doesn't exist in the sandbox — don't commit the key into the repo).
+   settings. (Don't put the key in the committed `.claude/settings.json` — it would be exposed in your repo.)
 
 ## Codex
 
