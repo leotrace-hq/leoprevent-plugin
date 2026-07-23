@@ -44,8 +44,9 @@ There's **no `/plugin` command** in the desktop app — add the marketplace thro
 2. Click the **`+`** in the Directory's top-right toolbar, paste
    `https://github.com/leotrace-hq/leoprevent-plugin`, and add it. (A trust warning appears — expected
    for a third-party marketplace.)
-3. Find **leoprevent** in the Directory and **install** it, then **restart the app** — plugins load at
-   startup, so the hook and the `/leoprevent:set-license` command aren't active until you restart.
+3. Open the **Code** tab in the Directory, find **leoprevent**, and **install** it. Then **restart the
+   app** — plugins load at startup, so the hook and the `/leoprevent:set-license` command aren't active
+   until you restart.
 
 Set your license key (once), **after** the restart above:
 ```
