@@ -6,7 +6,14 @@ to fix it before you see "done."
 
 ## Claude Code
 
-Install:
+LeoPrevent runs wherever Claude Code runs **on your own machine** — the **terminal CLI** and the
+**desktop app** (Code tab). The two install differently (slash commands vs. a UI), so pick your section
+below. On Claude Code **on the web** (claude.ai/code), the setup is different — see
+[On the web](#on-the-web-claudeaicode).
+
+### Terminal (CLI)
+
+Install with the `/plugin` slash commands:
 ```
 /plugin marketplace add leotrace-hq/leoprevent-plugin
 /plugin install leoprevent@leotrace
@@ -15,22 +22,10 @@ Install:
 It shows up under `/plugin` (Installed plugins) and adds the `/leoprevent:set-license` command; its
 review runs as a `Stop` hook, which you can see in `/hooks`.
 
-**Using the Claude Code desktop app (Code tab)?** There's no `/plugin` command there — add the
-marketplace through the UI instead:
-
-1. In the message box, open the **`+`** menu → **Add plugins…**. This opens the plugin **Directory**.
-2. Click **Add marketplace**, paste `https://github.com/leotrace-hq/leoprevent-plugin`, and click
-   **Sync**. (A trust warning appears — expected for a third-party marketplace.)
-3. Find **leoprevent** in the Directory and **install** it, then **restart the app** — plugins load at
-   startup, so the hook and the `/leoprevent:set-license` command aren't active until you restart.
-
 Set your license key (once):
 ```
 /leoprevent:set-license lp_live_your_key_here
 ```
-(In the desktop app, run this **after** the restart above — before that it reads as an unknown command
-because the plugin isn't loaded yet. If your agent won't run it, set the key by hand — see
-[Set your license key](#set-your-license-key) below.)
 
 To update: open `/plugin`, refresh the `leotrace` marketplace, then update **leoprevent** to the
 latest version. Updates are **not** applied automatically — a fresh install or a plain restart uses
@@ -41,6 +36,39 @@ _Optional — get updates automatically:_ in `/plugin`, open the **Marketplaces*
 `leotrace`, and enable auto-update. Claude Code then refreshes the marketplace in the background at
 session start and prompts `/reload-plugins` when a newer **leoprevent** is available, so you don't have
 to refresh by hand. (Off by default for third-party marketplaces like this one.)
+
+### Desktop app (Code tab)
+
+There's **no `/plugin` command** in the desktop app — add the marketplace through the UI instead:
+
+1. In the message box, open the **`+`** menu → **Add plugins…**. This opens the plugin **Directory**.
+2. Click **Add marketplace**, paste `https://github.com/leotrace-hq/leoprevent-plugin`, and click
+   **Sync**. (A trust warning appears — expected for a third-party marketplace.)
+3. Find **leoprevent** in the Directory and **install** it, then **restart the app** — plugins load at
+   startup, so the hook and the `/leoprevent:set-license` command aren't active until you restart.
+
+Set your license key (once), **after** the restart above:
+```
+/leoprevent:set-license lp_live_your_key_here
+```
+(Before the restart this reads as an unknown command, because the plugin isn't loaded yet. If your
+agent won't run it, set the key by hand — see [Set your license key](#set-your-license-key) below.)
+
+To update: reopen the **Directory** (the **`+`** menu → **Add plugins…**), refresh the `leotrace`
+marketplace, update **leoprevent**, and restart the app. Your license key survives the update.
+
+### On the web (claude.ai/code)
+
+Works in cloud sessions, but it isn't installed the same way and **isn't yet verified end-to-end**. The
+`/plugin` command isn't available on the web, and desktop/CLI installs don't carry over, so you set it up
+through your repo:
+
+1. Declare the marketplace and enable the plugin in your repo's `.claude/settings.json` (user-settings
+   plugins don't carry over to cloud sessions).
+2. In the environment's network access, choose **Custom** and add `leoprevent.fly.dev` to **Allowed
+   domains** — otherwise the hook can't reach the server and the review is skipped (fail-open).
+3. Supply your key via the `LEOPREVENT_LICENSE_KEY` env var (the local `license.json` doesn't exist in
+   the sandbox; don't commit the key into the repo).
 
 ## Codex
 
