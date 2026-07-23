@@ -6,10 +6,9 @@ to fix it before you see "done."
 
 ## Claude Code
 
-LeoPrevent runs wherever Claude Code runs **on your own machine** — the **terminal CLI** and the
-**desktop app** (Code tab). The two install differently (slash commands vs. a UI), so pick your section
-below. On Claude Code **on the web** (claude.ai/code), the setup is different — see
-[On the web](#on-the-web-claudeaicode).
+LeoPrevent works on all three ways of running Claude Code — but each installs differently, so pick your
+section: the **terminal CLI** (slash commands), the **desktop app** / Code tab (a UI), or
+**[on the web](#on-the-web-claudeaicode)** at claude.ai/code (repo config).
 
 ### Terminal (CLI)
 
