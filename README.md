@@ -41,8 +41,9 @@ to refresh by hand. (Off by default for third-party marketplaces like this one.)
 There's **no `/plugin` command** in the desktop app — add the marketplace through the UI instead:
 
 1. In the message box, open the **`+`** menu → **Add plugins…**. This opens the plugin **Directory**.
-2. Click **Add marketplace**, paste `https://github.com/leotrace-hq/leoprevent-plugin`, and click
-   **Sync**. (A trust warning appears — expected for a third-party marketplace.)
+2. Click the **`+`** in the Directory's top-right toolbar, paste
+   `https://github.com/leotrace-hq/leoprevent-plugin`, and add it. (A trust warning appears — expected
+   for a third-party marketplace.)
 3. Find **leoprevent** in the Directory and **install** it, then **restart the app** — plugins load at
    startup, so the hook and the `/leoprevent:set-license` command aren't active until you restart.
 
