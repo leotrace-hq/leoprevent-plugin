@@ -60,16 +60,24 @@ it. Your license key survives the update.
 
 ### On the web (claude.ai/code)
 
-Works in cloud sessions, but it isn't installed the same way and **isn't yet verified end-to-end**. The
-`/plugin` command isn't available on the web, and desktop/CLI installs don't carry over, so you set it up
-through your repo:
+Cloud sessions have no `/plugin` command and don't inherit CLI/desktop installs, so you set it up
+through your repo and the environment settings:
 
-1. Declare the marketplace and enable the plugin in your repo's `.claude/settings.json` (user-settings
-   plugins don't carry over to cloud sessions).
-2. In the environment's network access, choose **Custom** and add `leoprevent.fly.dev` to **Allowed
-   domains** — otherwise the hook can't reach the server and the review is skipped (fail-open).
-3. Supply your key via the `LEOPREVENT_LICENSE_KEY` env var (the local `license.json` doesn't exist in
-   the sandbox; don't commit the key into the repo).
+1. **Enable it in your repo's `.claude/settings.json`** (committed) — cloud sessions install it at
+   startup from the marketplace:
+   ```json
+   {
+     "extraKnownMarketplaces": {
+       "leotrace": { "source": { "source": "github", "repo": "leotrace-hq/leoprevent-plugin" } }
+     },
+     "enabledPlugins": { "leoprevent@leotrace": true }
+   }
+   ```
+2. **Allow the server:** in the cloud environment's network access, choose **Custom** and add
+   `leoprevent.fly.dev` to **Allowed domains** — otherwise the hook can't reach the server and the review
+   is skipped (fail-open).
+3. **Set your license key** as the `LEOPREVENT_LICENSE_KEY` environment variable in the environment's
+   settings (the local `license.json` doesn't exist in the sandbox — don't commit the key into the repo).
 
 ## Codex
 
