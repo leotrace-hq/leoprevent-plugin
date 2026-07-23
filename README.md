@@ -55,8 +55,8 @@ Set your license key (once), **after** the restart above:
 (Before the restart this reads as an unknown command, because the plugin isn't loaded yet. If your
 agent won't run it, set the key by hand — see [Set your license key](#set-your-license-key) below.)
 
-To update: reopen the **Directory** (the **`+`** menu → **Add plugins…**), refresh the `leotrace`
-marketplace, update **leoprevent**, and restart the app. Your license key survives the update.
+To update: open the **`+`** menu → **Plugins** → **Manage plugins**, go to **leoprevent**, and update
+it. Your license key survives the update.
 
 ### On the web (claude.ai/code)
 
