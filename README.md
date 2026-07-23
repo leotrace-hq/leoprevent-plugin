@@ -73,12 +73,12 @@ through your repo and the environment settings:
      "enabledPlugins": { "leoprevent@leotrace": true }
    }
    ```
-2. **Allow the server:** in the cloud environment's network access, choose **Custom**, tick **"Also
-   include default list of common package managers"** (keeps everything Trusted allows), and add
-   `leoprevent.fly.dev` to **Allowed domains**. Without this the hook can't reach the server and the
-   review is skipped (fail-open). Applies to **new** sessions only.
-3. **Set your license key:** open the environment's **three-dots menu (⋮)** → **Edit environment**, and add
-   `LEOPREVENT_LICENSE_KEY` as an environment variable there.
+2. **Set your license key:** open the environment's **three-dots menu (⋮)** → **Edit environment**, and add
+   `LEOPREVENT_LICENSE_KEY` as an environment variable.
+3. **Allow the server:** open the **three-dots menu (⋮)** → **Edit environment** → **Network access**,
+   choose **Custom**, tick **"Also include default list of common package managers"** (keeps everything
+   Trusted allows), and add `leoprevent.fly.dev` to **Allowed domains**. Without this the hook can't reach
+   the server and the review is skipped (fail-open). Applies to **new** sessions only.
 
 ## Codex
 
