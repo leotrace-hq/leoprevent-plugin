@@ -7,8 +7,8 @@ to fix it before you see "done."
 ## Claude Code
 
 LeoPrevent works on all three ways of running Claude Code — but each installs differently, so pick your
-section: the **terminal CLI** (slash commands), the **desktop app** / Code tab (a UI), or
-**[on the web](#on-the-web-claudeaicode)** at claude.ai/code (repo config).
+section: the **[terminal CLI](#terminal-cli)** (slash commands), the **[desktop app](#desktop-app-code-tab)**
+/ Code tab (a UI), or **[on the web](#on-the-web-claudeaicode)** at claude.ai/code (repo config).
 
 ### Terminal (CLI)
 
