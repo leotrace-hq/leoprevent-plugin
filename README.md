@@ -74,12 +74,11 @@ through the environment settings:
    claude plugin marketplace update leotrace || true
    claude plugin install leoprevent@leotrace || echo "leoprevent: install FAILED" >&2
    claude plugin update leoprevent@leotrace || true
-   claude plugin list        # so the setup log shows whether it actually landed
+   claude plugin list || true   # so the setup log shows whether it actually landed
    ```
-   A cloud container is ephemeral — nothing under `~/.claude` survives, so every session clones the
-   marketplace fresh and installs whatever the latest release is. You never have to update by hand.
-   (The two `update` lines are no-ops in the cloud for that reason; they're there so the same script
-   also works on a persistent machine.)
+   Because the script re-adds and updates the marketplace on every session, you always end up on the
+   latest release — no manual update step. Every line tolerates failure, so it's safe to append to a
+   setup script that uses `set -e`.
 2. **Set your license key:** open the environment's **three-dots menu (⋮)** → **Edit environment**, and add
    `LEOPREVENT_LICENSE_KEY` as an environment variable.
 3. **Allow the server:** open the **three-dots menu (⋮)** → **Edit environment** → **Network access**,
