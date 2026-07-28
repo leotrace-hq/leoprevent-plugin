@@ -68,13 +68,19 @@ through the environment settings:
    there):
    ```bash
    # LeoPrevent — cloud sessions don't auto-install repo-declared plugins (trust gate).
-   # --sparse skips the other agents' copies and halves the clone.
-   claude plugin marketplace add leotrace-hq/leoprevent-plugin \
-     --sparse .claude-plugin .agents/plugins || true
-   claude plugin marketplace update leotrace || true
-   claude plugin install leoprevent@leotrace || echo "leoprevent: install FAILED" >&2
-   claude plugin update leoprevent@leotrace || true
-   claude plugin list || true   # so the setup log shows whether it actually landed
+   # Resolve the CLI explicitly: it isn't always on PATH while the setup script runs,
+   # so fall back to the image's install dir. --sparse skips the other agents' copies.
+   CLAUDE_BIN="$(command -v claude || ls -d /opt/node*/bin/claude 2>/dev/null | head -1 || true)"
+   if [ -n "$CLAUDE_BIN" ]; then
+     "$CLAUDE_BIN" plugin marketplace add leotrace-hq/leoprevent-plugin \
+       --sparse .claude-plugin .agents/plugins || true
+     "$CLAUDE_BIN" plugin marketplace update leotrace || true
+     "$CLAUDE_BIN" plugin install leoprevent@leotrace || echo "leoprevent: install FAILED" >&2
+     "$CLAUDE_BIN" plugin update leoprevent@leotrace || true
+     "$CLAUDE_BIN" plugin list || true   # so the setup log shows whether it landed
+   else
+     echo "leoprevent: claude CLI not found — plugin NOT installed" >&2
+   fi
    ```
    Because the script re-adds and updates the marketplace on every session, you always end up on the
    latest release — no manual update step. Every line tolerates failure, so it's safe to append to a
@@ -91,9 +97,8 @@ All three apply to **new** sessions only.
 **Verify in a new session:** check the setup log for the `claude plugin list` output, or ask Claude to
 run it — it should show `leoprevent@leotrace … enabled`. (Nothing in the script exits non-zero on
 failure, deliberately: a bad install must never break the rest of your setup or block your session. The
-cost is that a failure is quiet unless you look — e.g. if `claude` isn't on `PATH` when the setup
-script runs, nothing is installed and no review happens, which looks exactly like the plugin not
-being there at all.)
+cost is that a failure is quiet unless you look — so if a review never fires, read the setup log for
+`leoprevent: install FAILED` or `claude CLI not found` before assuming the plugin is broken.)
 
 ## Codex
 
