@@ -67,10 +67,19 @@ through the environment settings:
    environment**, scroll down to **Setup script**, and append these lines (keep whatever's already
    there):
    ```bash
-   # LeoPrevent — cloud sessions don't auto-install repo-declared plugins (trust gate)
-   claude plugin marketplace add leotrace-hq/leoprevent-plugin || true
-   claude plugin install leoprevent@leotrace || true
+   # LeoPrevent — cloud sessions don't auto-install repo-declared plugins (trust gate).
+   # --sparse skips the other agents' copies and halves the clone.
+   claude plugin marketplace add leotrace-hq/leoprevent-plugin \
+     --sparse .claude-plugin .agents/plugins || true
+   claude plugin marketplace update leotrace || true
+   claude plugin install leoprevent@leotrace || echo "leoprevent: install FAILED" >&2
+   claude plugin update leoprevent@leotrace || true
+   claude plugin list        # so the setup log shows whether it actually landed
    ```
+   A cloud container is ephemeral — nothing under `~/.claude` survives, so every session clones the
+   marketplace fresh and installs whatever the latest release is. You never have to update by hand.
+   (The two `update` lines are no-ops in the cloud for that reason; they're there so the same script
+   also works on a persistent machine.)
 2. **Set your license key:** open the environment's **three-dots menu (⋮)** → **Edit environment**, and add
    `LEOPREVENT_LICENSE_KEY` as an environment variable.
 3. **Allow the server:** open the **three-dots menu (⋮)** → **Edit environment** → **Network access**,
@@ -80,9 +89,10 @@ through the environment settings:
 
 All three apply to **new** sessions only.
 
-**Verify in a new session:** ask Claude to run `claude plugin list` — it should show
-`leoprevent@leotrace … enabled`. (The `|| true` above keeps a failed install from breaking the rest of
-your setup script, but it also hides the failure — e.g. if `claude` isn't on `PATH` when the setup
+**Verify in a new session:** check the setup log for the `claude plugin list` output, or ask Claude to
+run it — it should show `leoprevent@leotrace … enabled`. (Nothing in the script exits non-zero on
+failure, deliberately: a bad install must never break the rest of your setup or block your session. The
+cost is that a failure is quiet unless you look — e.g. if `claude` isn't on `PATH` when the setup
 script runs, nothing is installed and no review happens, which looks exactly like the plugin not
 being there at all.)
 
