@@ -64,11 +64,9 @@ Cloud sessions have no `/plugin` command and don't inherit CLI/desktop installs,
 through the environment settings:
 
 1. **Install it from the environment's setup script:** open the **three-dots menu (⋮)** → **Edit
-   environment**, scroll down to **Setup script**, and put this there:
+   environment**, scroll down to **Setup script**, and append these lines (keep whatever's already
+   there):
    ```bash
-   #!/bin/bash
-   npm install
-
    # LeoPrevent — cloud sessions don't auto-install repo-declared plugins (trust gate)
    claude plugin marketplace add leotrace-hq/leoprevent-plugin || true
    claude plugin install leoprevent@leotrace || true
@@ -78,7 +76,15 @@ through the environment settings:
 3. **Allow the server:** open the **three-dots menu (⋮)** → **Edit environment** → **Network access**,
    choose **Custom**, tick **"Also include default list of common package managers"** (keeps everything
    Trusted allows), and add `leoprevent.fly.dev` to **Allowed domains**. Without this the hook can't reach
-   the server and the review is skipped (fail-open). Applies to **new** sessions only.
+   the server and the review is skipped (fail-open).
+
+All three apply to **new** sessions only.
+
+**Verify in a new session:** ask Claude to run `claude plugin list` — it should show
+`leoprevent@leotrace … enabled`. (The `|| true` above keeps a failed install from breaking the rest of
+your setup script, but it also hides the failure — e.g. if `claude` isn't on `PATH` when the setup
+script runs, nothing is installed and no review happens, which looks exactly like the plugin not
+being there at all.)
 
 ## Codex
 
