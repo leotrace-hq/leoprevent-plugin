@@ -6,9 +6,9 @@ to fix it before you see "done."
 
 ## Claude Code
 
-LeoPrevent runs on Claude Code **on your own machine** — the **[terminal CLI](#terminal-cli)** (slash
-commands) and the **[desktop app](#desktop-app-code-tab)** / Code tab (a UI). Claude Code
-**[on the web](#on-the-web-claudeaicode)** (claude.ai/code) isn't supported yet.
+LeoPrevent works on all three ways of running Claude Code — but each installs differently, so pick your
+section: the **[terminal CLI](#terminal-cli)** (slash commands), the **[desktop app](#desktop-app-code-tab)**
+/ Code tab (a UI), or **[on the web](#on-the-web-claudeaicode)** at claude.ai/code (environment config).
 
 ### Terminal (CLI)
 
@@ -60,15 +60,25 @@ it. Your license key survives the update.
 
 ### On the web (claude.ai/code)
 
-**Not supported yet.** Cloud sessions don't currently pick up LeoPrevent from a
-repo's `.claude/settings.json` — the marketplace auto-install doesn't fire at
-session start, so the Stop hook never registers and no review runs. This is a
-limitation of the web runtime, not the plugin (the same marketplace installs
-fine in the CLI and desktop app).
+Cloud sessions have no `/plugin` command and don't inherit CLI/desktop installs, so you set it up
+through the environment settings:
 
-We're tracking a fix. In the meantime, use LeoPrevent through the
-**[terminal CLI](#terminal-cli)** or the **[desktop app](#desktop-app-code-tab)**,
-both of which are fully supported.
+1. **Install it from the environment's setup script:** open the **three-dots menu (⋮)** → **Edit
+   environment**, scroll down to **Setup script**, and put this there:
+   ```bash
+   #!/bin/bash
+   npm install
+
+   # LeoPrevent — cloud sessions don't auto-install repo-declared plugins (trust gate)
+   claude plugin marketplace add leotrace-hq/leoprevent-plugin || true
+   claude plugin install leoprevent@leotrace || true
+   ```
+2. **Set your license key:** open the environment's **three-dots menu (⋮)** → **Edit environment**, and add
+   `LEOPREVENT_LICENSE_KEY` as an environment variable.
+3. **Allow the server:** open the **three-dots menu (⋮)** → **Edit environment** → **Network access**,
+   choose **Custom**, tick **"Also include default list of common package managers"** (keeps everything
+   Trusted allows), and add `leoprevent.fly.dev` to **Allowed domains**. Without this the hook can't reach
+   the server and the review is skipped (fail-open). Applies to **new** sessions only.
 
 ## Codex
 
