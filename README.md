@@ -75,7 +75,7 @@ through the environment settings:
      --sparse .claude-plugin .agents/plugins || true
    "$CLAUDE_BIN" plugin install leoprevent@leotrace \
      || echo "leoprevent: install failed — reviews will not run" >&2
-   "$CLAUDE_BIN" plugin list || true
+   "$CLAUDE_BIN" plugin list || true   # confirms in the setup log that it landed
    ```
    Why it looks like that: `claude` isn't always on `PATH` while the setup script runs, so the first
    line resolves it across the common install layouts; `--sparse` skips the other agents' copies of
@@ -85,9 +85,8 @@ through the environment settings:
 
    **Which version you get, and how to update.** The setup script runs when the environment's
    filesystem cache is built, not on every session — so you're on whatever release was current at
-   that point (the cache rebuilds roughly weekly, or whenever you edit the environment). To pull a
-   newer LeoPrevent, edit the environment — changing the setup script or the allowed hosts forces a
-   rebuild. That's also the fix if an install ever fails: the failure gets snapshotted too, so it
+   that point (the cache rebuilds roughly weekly). To pull a newer LeoPrevent, change the setup
+   script or the allowed hosts — either forces a rebuild; editing an environment variable does not. That's also the fix if an install ever fails: the failure gets snapshotted too, so it
    won't clear itself on the next session.
 2. **Set your license key:** open the environment's **three-dots menu (⋮)** → **Edit environment**, and add
    `LEOPREVENT_LICENSE_KEY` as an environment variable.
@@ -102,7 +101,8 @@ All three apply to **new** sessions only.
 run it — it should show `leoprevent@leotrace … enabled`. (Nothing in the script exits non-zero on
 failure, deliberately: a bad install must never break the rest of your setup or block your session. The
 cost is that a failure is quiet unless you look — so if a review never fires, read the setup log for
-`leoprevent: install FAILED` or `claude CLI not found` before assuming the plugin is broken.)
+`leoprevent: install failed — reviews will not run`, or for `claude: command not found` if the CLI
+couldn't be resolved, before assuming the plugin is broken.)
 
 ## Codex
 
