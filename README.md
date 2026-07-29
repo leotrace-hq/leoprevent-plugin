@@ -61,11 +61,11 @@ it. Your license key survives the update.
 ### On the web (claude.ai/code)
 
 Cloud sessions have no `/plugin` command and don't inherit CLI/desktop installs, so you set it up
-through the environment settings:
+through the environment settings. All three steps live in the **three-dots menu (⋮)** → **Edit
+environment**:
 
-1. **Install it from the environment's setup script:** open the **three-dots menu (⋮)** → **Edit
-   environment**, scroll down to **Setup script**, and append these lines (keep whatever's already
-   there):
+1. **Install it from the setup script:** scroll down to **Setup script** and append these lines (keep
+   whatever's already there):
    ```bash
    # LeoPrevent security review hook
    CLAUDE_BIN="$(command -v claude || ls -d "$HOME"/.local/bin/claude "$HOME"/.claude/local/claude \
@@ -77,23 +77,13 @@ through the environment settings:
      || echo "leoprevent: install failed — reviews will not run" >&2
    "$CLAUDE_BIN" plugin list || true   # confirms in the setup log that it landed
    ```
-   Why it looks like that: `claude` isn't always on `PATH` while the setup script runs, so the first
-   line resolves it across the common install layouts; `--sparse` skips the other agents' copies of
-   the binaries and halves the clone; `plugin list` puts the result in the setup log. Every line
-   tolerates failure independently, so a marketplace that's already registered doesn't stop the
-   install, and the whole block is safe to append to a setup script that uses `set -e`.
-
-   **Which version you get, and how to update.** The setup script runs when the environment's
-   filesystem cache is built, not on every session — so you're on whatever release was current at
-   that point (the cache rebuilds roughly weekly). To pull a newer LeoPrevent, change the setup
-   script or the allowed hosts — either forces a rebuild; editing an environment variable does not. That's also the fix if an install ever fails: the failure gets snapshotted too, so it
-   won't clear itself on the next session.
-2. **Set your license key:** open the environment's **three-dots menu (⋮)** → **Edit environment**, and add
-   `LEOPREVENT_LICENSE_KEY` as an environment variable.
-3. **Allow the server:** open the **three-dots menu (⋮)** → **Edit environment** → **Network access**,
-   choose **Custom**, tick **"Also include default list of common package managers"** (keeps everything
-   Trusted allows), and add `leoprevent.fly.dev` to **Allowed domains**. Without this the hook can't reach
-   the server and the review is skipped (fail-open).
+   Every line tolerates failure independently, so this is safe to append to a script that uses
+   `set -e`.
+2. **Set your license key:** add `LEOPREVENT_LICENSE_KEY` as an environment variable.
+3. **Allow the server:** under **Network access**, choose **Custom**, tick **"Also include default
+   list of common package managers"** (keeps everything Trusted allows), and add `leoprevent.fly.dev`
+   to **Allowed domains**. Without this the hook can't reach the server and the review is skipped
+   (fail-open).
 
 All three apply to **new** sessions only.
 
@@ -103,6 +93,12 @@ failure, deliberately: a bad install must never break the rest of your setup or 
 cost is that a failure is quiet unless you look — so if a review never fires, read the setup log for
 `leoprevent: install failed — reviews will not run`, or for `claude: command not found` if the CLI
 couldn't be resolved, before assuming the plugin is broken.)
+
+**Which version you get, and how to update.** The setup script runs when the environment's filesystem
+cache is built, not on every session — so you're on whatever release was current at that point (the
+cache rebuilds roughly weekly). To pull a newer LeoPrevent, change the setup script or the allowed
+hosts — either forces a rebuild; editing an environment variable does not. That's also the fix if an
+install ever fails: the failure gets snapshotted too, so it won't clear itself on the next session.
 
 ## Codex
 
