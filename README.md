@@ -67,21 +67,21 @@ through the environment settings:
    environment**, scroll down to **Setup script**, and append these lines (keep whatever's already
    there):
    ```bash
-   # LeoPrevent security review hook.
-   # (Observed: a marketplace declared in .claude/settings.json isn't cloned at session start.)
-   # Resolve the CLI explicitly: it isn't always on PATH while the setup script runs,
-   # so fall back to the image's install dir. --sparse skips the other agents' copies.
-   CLAUDE_BIN="$(command -v claude || ls -d /opt/node*/bin/claude 2>/dev/null | head -1 || true)"
-   if [ -n "$CLAUDE_BIN" ]; then
-     "$CLAUDE_BIN" plugin marketplace add leotrace-hq/leoprevent-plugin \
-       --sparse .claude-plugin .agents/plugins || true
-     "$CLAUDE_BIN" plugin install leoprevent@leotrace || echo "leoprevent: install FAILED" >&2
-     "$CLAUDE_BIN" plugin list || true   # so the setup log shows whether it landed
-   else
-     echo "leoprevent: claude CLI not found — plugin NOT installed" >&2
-   fi
+   # LeoPrevent security review hook
+   CLAUDE_BIN="$(command -v claude || ls -d "$HOME"/.local/bin/claude "$HOME"/.claude/local/claude \
+     /usr/local/bin/claude /opt/node*/bin/claude 2>/dev/null | head -1)"
+   CLAUDE_BIN="${CLAUDE_BIN:-claude}"
+   "$CLAUDE_BIN" plugin marketplace add leotrace-hq/leoprevent-plugin \
+     --sparse .claude-plugin .agents/plugins || true
+   "$CLAUDE_BIN" plugin install leoprevent@leotrace \
+     || echo "leoprevent: install failed — reviews will not run" >&2
+   "$CLAUDE_BIN" plugin list || true
    ```
-   Every line tolerates failure, so it's safe to append to a setup script that uses `set -e`.
+   Why it looks like that: `claude` isn't always on `PATH` while the setup script runs, so the first
+   line resolves it across the common install layouts; `--sparse` skips the other agents' copies of
+   the binaries and halves the clone; `plugin list` puts the result in the setup log. Every line
+   tolerates failure independently, so a marketplace that's already registered doesn't stop the
+   install, and the whole block is safe to append to a setup script that uses `set -e`.
 
    **Which version you get, and how to update.** The setup script runs when the environment's
    filesystem cache is built, not on every session — so you're on whatever release was current at
