@@ -67,24 +67,28 @@ through the environment settings:
    environment**, scroll down to **Setup script**, and append these lines (keep whatever's already
    there):
    ```bash
-   # LeoPrevent — cloud sessions don't auto-install repo-declared plugins (trust gate).
+   # LeoPrevent security review hook.
+   # (Observed: a marketplace declared in .claude/settings.json isn't cloned at session start.)
    # Resolve the CLI explicitly: it isn't always on PATH while the setup script runs,
    # so fall back to the image's install dir. --sparse skips the other agents' copies.
    CLAUDE_BIN="$(command -v claude || ls -d /opt/node*/bin/claude 2>/dev/null | head -1 || true)"
    if [ -n "$CLAUDE_BIN" ]; then
      "$CLAUDE_BIN" plugin marketplace add leotrace-hq/leoprevent-plugin \
        --sparse .claude-plugin .agents/plugins || true
-     "$CLAUDE_BIN" plugin marketplace update leotrace || true
      "$CLAUDE_BIN" plugin install leoprevent@leotrace || echo "leoprevent: install FAILED" >&2
-     "$CLAUDE_BIN" plugin update leoprevent@leotrace || true
      "$CLAUDE_BIN" plugin list || true   # so the setup log shows whether it landed
    else
      echo "leoprevent: claude CLI not found — plugin NOT installed" >&2
    fi
    ```
-   Because the script re-adds and updates the marketplace on every session, you always end up on the
-   latest release — no manual update step. Every line tolerates failure, so it's safe to append to a
-   setup script that uses `set -e`.
+   Every line tolerates failure, so it's safe to append to a setup script that uses `set -e`.
+
+   **Which version you get, and how to update.** The setup script runs when the environment's
+   filesystem cache is built, not on every session — so you're on whatever release was current at
+   that point (the cache rebuilds roughly weekly, or whenever you edit the environment). To pull a
+   newer LeoPrevent, edit the environment — changing the setup script or the allowed hosts forces a
+   rebuild. That's also the fix if an install ever fails: the failure gets snapshotted too, so it
+   won't clear itself on the next session.
 2. **Set your license key:** open the environment's **three-dots menu (⋮)** → **Edit environment**, and add
    `LEOPREVENT_LICENSE_KEY` as an environment variable.
 3. **Allow the server:** open the **three-dots menu (⋮)** → **Edit environment** → **Network access**,
