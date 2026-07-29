@@ -12,10 +12,14 @@ section: the **[terminal CLI](#terminal-cli)** (slash commands), the **[desktop 
 
 ### Terminal (CLI)
 
-Install with the `/plugin` slash commands:
+Install with the `/plugin` slash commands — **one at a time**, since each opens its own prompt:
 ```
 /plugin marketplace add leotrace-hq/leoprevent-plugin
+```
+```
 /plugin install leoprevent@leotrace
+```
+```
 /reload-plugins
 ```
 It shows up under `/plugin` (Installed plugins) and adds the `/leoprevent:set-license` command; its
