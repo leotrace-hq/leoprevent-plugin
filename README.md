@@ -85,7 +85,7 @@ environment**:
    `set -e`.
 2. **Set your license key:** add `LEOPREVENT_LICENSE_KEY` as an environment variable.
 3. **Allow the server:** under **Network access**, choose **Custom**, tick **"Also include default
-   list of common package managers"** (keeps everything Trusted allows), and add `leoprevent.fly.dev`
+   list of common package managers"** (keeps everything Trusted allows), and add `api.leotrace.io`
    to **Allowed domains**. Without this the hook can't reach the server and the review is skipped
    (fail-open).
 
