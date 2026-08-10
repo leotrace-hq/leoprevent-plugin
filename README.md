@@ -174,3 +174,38 @@ New-Item -ItemType Directory -Force "$env:AppData\leoprevent" | Out-Null
 - If the server is unreachable or your key isn't set, the review is simply skipped — it never blocks you.
 - **Windows:** works with Claude Code (the plugin ships a Windows binary; PowerShell, cmd, and Git
   Bash are all covered). Codex on Windows is not supported yet.
+
+## Verify the binary matches this source
+
+This repo contains the **complete source** of the client binary it ships, and the build is
+**reproducible** — so you don't have to take our word that the two belong together. Rebuild it and
+compare:
+
+```bash
+./build.sh
+shasum -a 256 bin/leoprevent-plugin .agents/plugins/leoprevent/bin/leoprevent-plugin-darwin-arm64
+```
+
+The two hashes must be identical (use the `-darwin-amd64` or `-linux-amd64` binary to match your
+platform). `build.sh` needs nothing but a Go toolchain — the module is self-contained.
+
+**Build with the Go version named in `go.mod`.** Go bakes toolchain details into the binary, so a
+different Go release produces a different — still perfectly valid — hash. If your hashes don't match,
+check `go version` first.
+
+What you can confirm from the source: exactly what leaves your machine, when a review is skipped, and
+that the client contains no rule content of its own (it asks the server).
+
+## About this repository
+
+This repo is a **published mirror** of the plugin source, regenerated from our internal repo on every
+release — the whole tree is replaced each time. Two consequences worth knowing before you spend time:
+
+- **Pull requests can't be merged here.** A merge would be overwritten by the next release, silently.
+  If you have a fix or an idea, email it to **info@leotrace.io** and we'll apply it upstream with
+  credit.
+- **Issues aren't tracked here.** Bugs go to the same address; security reports follow
+  [SECURITY.md](SECURITY.md).
+
+The source is published so you can verify what the client does and that the binary matches — not
+because development happens here. Licensed under Apache-2.0 (see [LICENSE](LICENSE)).
