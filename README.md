@@ -4,6 +4,13 @@ Security review built into **Claude Code**, **Codex**, and **GitHub Copilot**. W
 LeoPrevent reviews what it just wrote — and if there's a security issue, sends the agent back
 to fix it before you see "done."
 
+> **The client is open source** (Apache-2.0), and this repo carries its complete Go source next to the
+> binaries it ships. You can read exactly what leaves your machine — and compile it yourself: clone,
+> run `./build.sh` (needs only the Go toolchain named in `go.mod`), and the hashes match the shipped
+> binaries byte-for-byte. Details: [Verify the binary matches this
+> source](#verify-the-binary-matches-this-source). The security rules and the review server stay
+> private — the client contains none of them.
+
 ## Claude Code
 
 LeoPrevent works on all three ways of running Claude Code — but each installs differently, so pick your
