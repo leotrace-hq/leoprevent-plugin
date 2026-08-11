@@ -91,6 +91,32 @@ type TurnMeta struct {
 	// unanswerable from the event log, which is exactly how a client-side regression
 	// stays invisible: every turn looks the same server-side no matter what shipped.
 	ClientVersion string `json:"client_version,omitempty"`
+	// Environment is the PRODUCT SURFACE this turn ran in — the terminal, the desktop
+	// app, a web session — normalized to the closed Env* vocabulary below. Agent alone
+	// stops at the VENDOR ("claude"), which cannot answer "did this turn come from the
+	// terminal or from claude.ai", so the two are separate dimensions and must stay
+	// separable in analysis: Agent x Environment x AgentModel, never one fused string.
+	//
+	// Same character as OS/Arch/ClientVersion — resolved from the client's own process
+	// environment or its hook dialect, never from a transcript, so it needs no parse to
+	// succeed — and it rides the same routes (/review AND /telemetry, not /outcome:
+	// same machine as its review, so it would be egress with no information).
+	//
+	// EMPTY means the client is too old to send one. EnvUnknown means a current client
+	// looked and could not classify what it found. Those are different facts and the
+	// dashboards must not merge them: the first is a rollout gap that fixes itself as
+	// clients update, the second is a surface we have not taught the client about.
+	Environment string `json:"environment,omitempty"`
+	// EnvironmentRaw is the underlying signal VERBATIM and unmapped (for Claude Code,
+	// $CLAUDE_CODE_ENTRYPOINT). It exists because the normalized vocabulary is compiled
+	// into the client, and the client is the slowest thing in the system to update: when
+	// a new surface appears, Environment buckets it as EnvUnknown until a release ships,
+	// while this field shows what it actually was from the very first turn. It also makes
+	// a misclassification diagnosable from the event log alone, with no repro.
+	//
+	// Metadata, not PII — a product-surface identifier from a fixed vendor vocabulary.
+	// Never a path, a hostname or anything user-authored; see the Env* mapping.
+	EnvironmentRaw string `json:"environment_raw,omitempty"`
 	// GitBaseline reports whether this turn's changed files came from the git-baseline
 	// diff (true) or the DEGRADED transcript fallback (false), and BaselineSkip says
 	// WHY when it didn't. The fallback loses full-file context, real line numbers and
@@ -177,6 +203,47 @@ type Finding struct {
 // decoded — the one case where meta.ClientVersion is unavailable and the version is
 // the first thing anyone debugging a rejected payload wants to know.
 const ClientVersionHeader = "X-LeoPrevent-Client-Version"
+
+// TurnMeta.Environment values — the CLOSED vocabulary the dashboards group on. It
+// lives here, in the shared wire package, for the same reason ClientVersionHeader
+// does: the client writes these strings and the server + both dashboards read them,
+// so a vendor-side spelling change must break the build in one place rather than
+// silently split one surface into two rows.
+//
+// Each value is one PRODUCT SURFACE, agent-prefixed so it reads correctly standing
+// alone in a table cell (Agent is a separate column, but a bare "vscode" would be
+// ambiguous between Claude Code and Copilot — both have one).
+//
+// DELIBERATELY SMALL. The mapping's inputs are much larger than this set (Claude
+// Code alone ships ~25 entrypoint values), and the temptation is to mint a constant
+// per input. Resist it: every value here becomes a row in someone's UI, and the
+// surfaces that cannot realistically run a Stop hook — an ephemeral GitHub Actions
+// or Slack sandbox, where nobody has installed the plugin — would be rows that are
+// always zero. A recognized-but-unmapped input lands on EnvUnknown with
+// TurnMeta.EnvironmentRaw carrying what it actually was, which is the honest record
+// and costs no UI. Add a constant when the log shows the raw value arriving, not in
+// anticipation of it.
+const (
+	EnvClaudeTerminal = "claude-code-terminal" // the CLI in a terminal
+	EnvClaudeDesktop  = "claude-code-desktop"  // the Claude desktop app
+	EnvClaudeWeb      = "claude-code-web"      // a remote session driven from claude.ai
+	EnvClaudeMobile   = "claude-code-mobile"   // a remote session driven from the mobile app
+	EnvClaudeVSCode   = "claude-code-vscode"   // the Claude Code VS Code extension
+	EnvClaudeCowork   = "claude-code-cowork"   // Cowork (local-agent / coworker sessions)
+	EnvClaudeSDK      = "claude-code-sdk"      // driven programmatically via the Agent SDK or MCP
+
+	EnvCodexCLI  = "codex-cli"  // the Codex CLI's own TUI, via its Stop hook
+	EnvCodexExec = "codex-exec" // headless, driven by our own `leoprevent exec` loop
+
+	EnvCopilotVSCode = "copilot-vscode" // GitHub Copilot agent mode inside VS Code
+	EnvCopilotCLI    = "copilot-cli"    // the GitHub Copilot CLI
+
+	// EnvUnknown is a CURRENT client that looked and could not classify what it found.
+	// It is NOT the same as an absent Environment (a client too old to send one) — see
+	// the field doc. Pair it with EnvironmentRaw to tell a brand-new vendor surface
+	// apart from no signal at all.
+	EnvUnknown = "unknown"
+)
 
 // Verdict values for ReviewResponse.
 const (

@@ -297,10 +297,16 @@ func openWriter(component string) (io.Writer, func()) {
 	if path == "" {
 		return os.Stderr, func() {}
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	// 0700/0600, not the customary 0755/0644: with audit-body logging ON (the
+	// default) this file holds code diffs and the developer's prompt — on the
+	// client it is the dev's own code, on the server it is a CUSTOMER's — so a
+	// world-readable log on a shared machine is a quiet disclosure. Same posture
+	// as the per-session scratch files (vcs/outcome/notify, all 0600). NB this
+	// tightens permissions for NEW files only; an existing log keeps its mode.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return os.Stderr, func() {}
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return os.Stderr, func() {}
 	}

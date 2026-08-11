@@ -75,12 +75,13 @@ func runExec(args []string) int {
 		strings.Join(argv, " "), cfg.Tier, cfg.ServerURL, *maxRounds)
 
 	opts := clirun.Options{
-		Cwd:       cwd,
-		Prompt:    prompt,
-		Agent:     *agentName,
-		MaxRounds: *maxRounds,
-		Run:       clirun.ExecRunner(argv),
-		Out:       os.Stderr,
+		Cwd:         cwd,
+		Prompt:      prompt,
+		Agent:       *agentName,
+		Environment: execEnvironment(*agentName),
+		MaxRounds:   *maxRounds,
+		Run:         clirun.ExecRunner(argv),
+		Out:         os.Stderr,
 	}
 	// For Codex, recover the agent's own model/tokens/duration from the rollout it
 	// writes (the headless loop has no transcript path to hand the reviewer).
@@ -96,6 +97,23 @@ func runExec(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// execEnvironment names the product surface these turns are attributed to. This
+// subcommand drives the agent HEADLESSLY, so the surface is the exec loop, not the
+// agent's own interactive runtime — the two must not merge, or a CI/eval run's turns
+// would be indistinguishable from a developer's in the analytics they exist to feed.
+//
+// Only Codex has a distinct exec surface today. `claude -p` and the Copilot CLI both
+// export or infer their own surface on the hook path; here there is no hook and no
+// signal, so they stay unattributed (empty) rather than being assigned a plausible
+// one — an absent value reads as "we don't know", which is true, while a guess would
+// read as a measurement.
+func execEnvironment(agentName string) string {
+	if agentName == "codex" {
+		return wire.EnvCodexExec
+	}
+	return ""
 }
 
 // agentArgv resolves the agent command: an explicit --agent-cmd override, else a

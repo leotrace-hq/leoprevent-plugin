@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/agent"
+	"github.com/leotrace-hq/leoprevent-plugin/wire"
 )
 
 func TestParseEvent(t *testing.T) {
@@ -187,5 +188,25 @@ func TestDeliverPromptNoticeStaysSystemMessageOnly(t *testing.T) {
 	}
 	if len(m) != 1 {
 		t.Errorf("codex prompt notice must carry exactly systemMessage; got %s", out)
+	}
+}
+
+// Reaching this adapter at all IS the classification: it only ever runs from the
+// Codex CLI's own Stop hook. The headless path never arrives here — `leoprevent exec`
+// drives Codex itself and attributes to wire.EnvCodexExec — so the two surfaces stay
+// distinguishable without this adapter having to tell them apart.
+func TestEnvironmentIsCodexCLI(t *testing.T) {
+	if env := New().Environment(agent.Event{}); env.Name != wire.EnvCodexCLI {
+		t.Errorf("Environment().Name = %q, want %q", env.Name, wire.EnvCodexCLI)
+	}
+}
+
+// Raw stays EMPTY. Codex exports no entrypoint we have verified, and a raw value is
+// meant to be a quotation of what the vendor told us — synthesising one (echoing
+// "codex-cli" back into it) would be indistinguishable in the log from a real reading
+// and would mask the day Codex starts reporting a surface for real.
+func TestEnvironmentCarriesNoInventedRawSignal(t *testing.T) {
+	if env := New().Environment(agent.Event{}); env.Raw != "" {
+		t.Errorf("Environment().Raw = %q, want empty — there is no vendor signal to quote", env.Raw)
 	}
 }

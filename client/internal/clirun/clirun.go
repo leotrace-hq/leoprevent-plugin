@@ -48,12 +48,18 @@ func ExecRunner(argv []string) AgentRunner {
 
 // Options configures one headless review loop.
 type Options struct {
-	Cwd       string      // working dir (must be a git repo)
-	Prompt    string      // the developer's task
-	Agent     string      // the coding agent being driven ("codex" | "claude" | "copilot"), for attribution
-	MaxRounds int         // safety cap on agent invocations (>=1)
-	Run       AgentRunner // how to invoke the agent
-	Out       io.Writer   // human-facing progress
+	Cwd    string // working dir (must be a git repo)
+	Prompt string // the developer's task
+	Agent  string // the coding agent being driven ("codex" | "claude" | "copilot"), for attribution
+	// Environment is the wire.Env* surface to attribute these turns to. This loop is
+	// NOT the agent's own hook path — it drives the agent headlessly — so it is a
+	// distinct surface from the TUI even for the same vendor (wire.EnvCodexExec vs
+	// wire.EnvCodexCLI), and the caller names it rather than the loop inferring it
+	// from Agent. Empty is left as-is: an unattributed turn, never a guess.
+	Environment string
+	MaxRounds   int         // safety cap on agent invocations (>=1)
+	Run         AgentRunner // how to invoke the agent
+	Out         io.Writer   // human-facing progress
 
 	// RolloutMeta, if set, recovers the agent's own turn metadata (model, tokens,
 	// duration, prompt) AFTER a round's run — for codex exec, by parsing the rollout
@@ -142,6 +148,7 @@ func Loop(r engine.Reviewer, opts Options) (Result, error) {
 			Prompt:    prompt,
 
 			ClientVersion: buildinfo.Version, // parity with the hook path
+			Environment:   opts.Environment,  // the headless loop, not the agent's own TUI
 			GitBaseline:   true,              // this loop bails above unless the git path worked
 		}
 		if opts.RolloutMeta != nil {

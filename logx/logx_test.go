@@ -3,9 +3,11 @@ package logx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -162,4 +164,33 @@ func mustCreate(t *testing.T, path string) *os.File {
 	}
 	t.Cleanup(func() { _ = f.Close() })
 	return f
+}
+
+// With audit-body logging on by default, the log holds code diffs and prompts —
+// a world-readable file would quietly disclose them on a shared machine.
+func TestLogFileIsOwnerOnly(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix permission bits")
+	}
+	dir := t.TempDir()
+	t.Setenv("LEOPREVENT_LOG", filepath.Join(dir, "sub", "client.log"))
+	w, closeFn := openWriter("client")
+	defer closeFn()
+	if _, err := fmt.Fprintln(w, "x"); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(filepath.Join(dir, "sub", "client.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := fi.Mode().Perm(); perm != 0o600 {
+		t.Errorf("log file mode = %o, want 0600 (audit bodies land here)", perm)
+	}
+	di, err := os.Stat(filepath.Join(dir, "sub"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := di.Mode().Perm(); perm != 0o700 {
+		t.Errorf("log dir mode = %o, want 0700", perm)
+	}
 }

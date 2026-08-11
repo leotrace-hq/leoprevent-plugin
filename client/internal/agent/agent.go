@@ -76,10 +76,40 @@ type TurnMeta struct {
 	// Set by Claude, left zero by Codex (settled rollout) — see engine.turnMeta.
 }
 
+// Environment is the PRODUCT SURFACE a turn ran in — terminal vs desktop app vs a
+// web session — which Agent.Name (the vendor) cannot answer on its own.
+//
+// Name is the normalized wire.Env* value the dashboards group on; Raw is whatever
+// the adapter actually read, verbatim and unmapped, so a surface the compiled-in
+// vocabulary predates is still visible in the log. Raw may be empty when the signal
+// is structural rather than a value (Copilot infers its surface from the stdin
+// dialect — there is no string to quote).
+type Environment struct {
+	Name string
+	Raw  string
+}
+
 // Agent abstracts one AI coding agent's Stop-hook integration.
 type Agent interface {
 	// Name identifies the agent (for stderr logging).
 	Name() string
+
+	// Environment reports which product surface this turn ran in (see Environment).
+	//
+	// It is behind the seam because the signal is per-vendor and structurally
+	// different in each: Claude Code exports an entrypoint in the process
+	// environment, while Copilot betrays its runtime through the hook dialect it
+	// speaks — there is no shared mechanism for the core to reach for.
+	//
+	// Deliberately NOT folded into TurnMeta, which is transcript-derived and returns
+	// its zero value on any parse failure. The environment needs no transcript, so
+	// binding the two would blank a fact we reliably know whenever an unrelated
+	// parse missed — precisely the silent-degradation this field exists to expose.
+	//
+	// Total, never failing: an adapter that cannot classify returns wire.EnvUnknown
+	// (with Raw set when it saw something it did not recognize), so a caller never
+	// has to decide what an error means for analytics.
+	Environment(ev Event) Environment
 
 	// ParseEvent decodes the agent's Stop-hook stdin payload.
 	ParseEvent(stdin []byte) (Event, error)

@@ -291,3 +291,87 @@ func TestReviewContextStatesSurfacedNotFixed(t *testing.T) {
 		t.Errorf("mixed notice must state both halves; got %q", mix)
 	}
 }
+
+// The entrypoint mapping. Every input here is a value Claude Code itself ships, so
+// this table doubles as the record of which vendor spellings we have accounted for.
+func TestClassifyEntrypoint(t *testing.T) {
+	for _, tc := range []struct {
+		raw, want string
+	}{
+		{"cli", wire.EnvClaudeTerminal},
+		{"ssh-remote", wire.EnvClaudeTerminal},
+		{"bench", wire.EnvClaudeTerminal},
+		{"claude-desktop", wire.EnvClaudeDesktop},
+		{"claude-desktop-3p", wire.EnvClaudeDesktop},
+		// A remote session DRIVEN FROM the desktop app is still the desktop app to the
+		// developer sitting in front of it — grouped by surface, not by transport.
+		{"remote_desktop", wire.EnvClaudeDesktop},
+		{"remote", wire.EnvClaudeWeb},
+		{"remote_baku", wire.EnvClaudeWeb},
+		{"remote_trigger", wire.EnvClaudeWeb},
+		{"remote_mobile", wire.EnvClaudeMobile},
+		{"claude-vscode", wire.EnvClaudeVSCode},
+		{"local-agent", wire.EnvClaudeCowork},
+		{"local_agent", wire.EnvClaudeCowork},
+		{"remote_cowork", wire.EnvClaudeCowork},
+		{"claude-coworker", wire.EnvClaudeCowork},
+		{"claude-coworker-terminal", wire.EnvClaudeCowork},
+		{"sdk-cli", wire.EnvClaudeSDK},
+		{"sdk-ts", wire.EnvClaudeSDK},
+		{"sdk-py", wire.EnvClaudeSDK},
+		{"mcp", wire.EnvClaudeSDK},
+	} {
+		if got := classifyEntrypoint(tc.raw); got != tc.want {
+			t.Errorf("classifyEntrypoint(%q) = %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}
+
+// An unrecognized entrypoint must NOT be guessed at by prefix. A wrong bucket is
+// worse than an honest unknown because it is invisible — it silently inflates a
+// real surface — whereas unknown+raw announces itself and names its own fix.
+func TestClassifyEntrypointDoesNotGuess(t *testing.T) {
+	for _, raw := range []string{
+		"",
+		"claude-desktop-next", // looks desktop-ish; is not a value we know
+		"remote_hologram",     // looks remote-ish; ditto
+		"cli-v2",
+		"totally-new-surface",
+	} {
+		if got := classifyEntrypoint(raw); got != wire.EnvUnknown {
+			t.Errorf("classifyEntrypoint(%q) = %q, want %q — the mapping must not extrapolate", raw, got, wire.EnvUnknown)
+		}
+	}
+}
+
+// Environment reads the live entrypoint and reports BOTH halves: the bucket, and the
+// raw value behind it. The raw half is what makes a surface visible on the very first
+// turn it appears, rather than after we ship a client that knows about it.
+func TestEnvironmentReportsBucketAndRaw(t *testing.T) {
+	t.Setenv(entrypointEnv, "claude-desktop")
+	if env := New().Environment(agent.Event{}); env.Name != wire.EnvClaudeDesktop || env.Raw != "claude-desktop" {
+		t.Errorf("Environment() = %+v, want {claude-code-desktop claude-desktop}", env)
+	}
+
+	// A surface newer than this build: bucket unknown, but the log still records what
+	// it actually was.
+	t.Setenv(entrypointEnv, "claude-hologram")
+	env := New().Environment(agent.Event{})
+	if env.Name != wire.EnvUnknown {
+		t.Errorf("unrecognized entrypoint should bucket unknown, got %q", env.Name)
+	}
+	if env.Raw != "claude-hologram" {
+		t.Errorf("raw signal must survive an unrecognized bucket, got %q", env.Raw)
+	}
+}
+
+// No entrypoint at all is unknown with an EMPTY raw. That pairing is what the server
+// reads as "a current client looked and found nothing", as distinct from an absent
+// Environment field, which means a client too old to look at all.
+func TestEnvironmentUnsetIsUnknownWithNoRaw(t *testing.T) {
+	t.Setenv(entrypointEnv, "")
+	env := New().Environment(agent.Event{})
+	if env.Name != wire.EnvUnknown || env.Raw != "" {
+		t.Errorf("Environment() with no entrypoint = %+v, want {unknown }", env)
+	}
+}

@@ -51,6 +51,11 @@ import (
 // self-managed loop-guard marker can be keyed per session.
 type Adapter struct {
 	sessionID string
+	// environment is the runtime inferred from the stdin dialect at ParseEvent (see
+	// Environment). Carried on the struct for the same reason sessionID is: it is
+	// only knowable while the payload is in hand, and the seam hands the later calls
+	// an Event, not the raw bytes.
+	environment string
 }
 
 // New returns a Copilot adapter.
@@ -91,6 +96,7 @@ func (a *Adapter) ParseEvent(stdin []byte) (agent.Event, error) {
 		return agent.Event{}, err
 	}
 	a.sessionID = firstNonEmpty(p.SessionID, p.SessionIDCamel)
+	a.environment = dialectEnvironment(p)
 	ev := agent.Event{
 		Name:                 normalizeEventName(p),
 		StopHookActive:       p.StopHookActive,
@@ -109,6 +115,41 @@ func (a *Adapter) ParseEvent(stdin []byte) (agent.Event, error) {
 		ev.StopHookActive = true
 	}
 	return ev, nil
+}
+
+// Environment reports which of Copilot's two runtimes this turn ran in, as inferred
+// from the stdin dialect at ParseEvent.
+//
+// Copilot exports no entrypoint variable, but it does not need to: the two runtimes
+// speak DIFFERENT dialects of the same hook, so the payload that reaches us already
+// names its own sender. That makes this the one adapter whose signal is structural
+// rather than a value — hence an empty Raw, since quoting "the keys were snake_case"
+// as if it were a vendor string would misrepresent where it came from.
+//
+// Before ParseEvent (or after one that saw neither dialect) this is EnvUnknown, not
+// a default runtime: the CLI path is the unverified one, so guessing it is exactly
+// where a wrong answer would go unnoticed.
+func (a *Adapter) Environment(agent.Event) agent.Environment {
+	if a.environment == "" {
+		return agent.Environment{Name: wire.EnvUnknown}
+	}
+	return agent.Environment{Name: a.environment}
+}
+
+// dialectEnvironment infers the runtime from which spelling the payload used.
+// snake_case is VS Code agent mode (the Claude-compatible form, which also carries
+// stop_hook_active); camelCase is the Copilot CLI's native form. Checked in that
+// order to match the per-field precedence in hookPayload, so a payload carrying both
+// resolves the same way everywhere rather than by whichever check ran first.
+func dialectEnvironment(p hookPayload) string {
+	switch {
+	case p.SessionID != "" || p.TranscriptPath != "" || p.HookEventName != "" || p.StopReason != "":
+		return wire.EnvCopilotVSCode
+	case p.SessionIDCamel != "" || p.TranscriptPathCamel != "" || p.HookEventNameCamel != "" || p.StopReasonCamel != "":
+		return wire.EnvCopilotCLI
+	default:
+		return wire.EnvUnknown
+	}
 }
 
 // normalizeEventName maps Copilot's event names onto the seam's contract:

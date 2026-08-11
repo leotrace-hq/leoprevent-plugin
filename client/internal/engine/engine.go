@@ -505,6 +505,11 @@ func turnMeta(a agent.Agent, ev agent.Event, log *slog.Logger, now time.Time) wi
 	if !m.PromptTime.IsZero() && now.After(m.PromptTime) {
 		dur = now.Sub(m.PromptTime).Milliseconds()
 	}
+	// Read SEPARATELY from a.TurnMeta above, and deliberately after its error is
+	// swallowed: the surface comes from the process environment or the hook dialect,
+	// never the transcript, so a transcript that failed to parse must not cost us a
+	// fact we still know. Total by contract — no error to handle.
+	env := a.Environment(ev)
 	return wire.TurnMeta{
 		Agent:               a.Name(),
 		AgentModel:          m.AgentModel,
@@ -513,6 +518,8 @@ func turnMeta(a agent.Agent, ev agent.Event, log *slog.Logger, now time.Time) wi
 		OS:                  runtime.GOOS,      // the dev machine's platform — compiled in, always known
 		Arch:                runtime.GOARCH,    // NB on ARM Windows this reads amd64: we ship one x64 exe
 		ClientVersion:       buildinfo.Version, // which plugin build produced this turn ("dev" when unstamped)
+		Environment:         env.Name,          // which product surface — terminal / desktop / web / …
+		EnvironmentRaw:      env.Raw,           // the unmapped signal, so a NEW surface is visible before we ship support for it
 		Prompt:              m.Prompt,
 		AgentNote:           ev.LastAssistantMessage, // the agent's own end-of-turn note (moving-baseline signal)
 		InputTokens:         m.InputTokens,

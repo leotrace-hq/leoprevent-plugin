@@ -905,3 +905,52 @@ func TestCodexAdapterStopHookActive(t *testing.T) {
 		t.Error("reviewer should not run when the loop guard trips")
 	}
 }
+
+// The environment reaches the reviewer, and — the load-bearing half — it survives a
+// turn whose TRANSCRIPT yields nothing.
+//
+// This is the regression guard for keeping Environment off agent.TurnMeta. TurnMeta is
+// transcript-derived and collapses to its zero value on any parse miss; the surface is
+// read from the process environment and needs no transcript at all. Bind the two and a
+// turn with an unreadable transcript would report no environment despite our knowing it
+// perfectly well — silently, and exactly on the degraded turns worth studying. The
+// transcript below deliberately carries a file edit but NO model and NO usage, so the
+// model comes back empty in the very same call that must still carry the surface.
+func TestEnvironmentReachesReviewerEvenWhenTheTranscriptYieldsNothing(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_ENTRYPOINT", "claude-desktop")
+	tp := writeTranscript(t,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Write","input":{"file_path":"/p/app.py","content":"resp = requests.get(url)"}}]}}`,
+	)
+	r := &fakeReviewer{prompt: ""}
+	if _, _, _ = runWith(claude.New(), r, payload(tp)); !r.called {
+		t.Fatal("reviewer should have run")
+	}
+	if r.gotMeta.AgentModel != "" {
+		t.Fatalf("precondition: this transcript must yield no model, got %q", r.gotMeta.AgentModel)
+	}
+	if r.gotMeta.Environment != wire.EnvClaudeDesktop {
+		t.Errorf("meta.Environment = %q, want %q — the surface must not depend on the transcript",
+			r.gotMeta.Environment, wire.EnvClaudeDesktop)
+	}
+	if r.gotMeta.EnvironmentRaw != "claude-desktop" {
+		t.Errorf("meta.EnvironmentRaw = %q, want the entrypoint verbatim", r.gotMeta.EnvironmentRaw)
+	}
+}
+
+// A no-review turn still reports its surface. Telemetry exists so per-prompt analytics
+// covers turns with no reviewable code; an environment breakdown that silently counted
+// only code-bearing turns would misreport whichever surface people read in more than
+// they write in — which is the desktop/web comparison the field was added to answer.
+func TestTelemetryCarriesTheEnvironment(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_ENTRYPOINT", "cli")
+	tp := writeTranscript(t,
+		`{"type":"user","message":{"role":"user","content":"what does this repo do?"}}`,
+	)
+	r := &fakeReviewer{prompt: ""}
+	if _, _, _ = runWith(claude.New(), r, payload(tp)); r.telemetryCalls == 0 {
+		t.Fatal("a turn with no changed files must ship telemetry")
+	}
+	if r.telemetryMeta.Environment != wire.EnvClaudeTerminal {
+		t.Errorf("telemetry Environment = %q, want %q", r.telemetryMeta.Environment, wire.EnvClaudeTerminal)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/agent"
+	"github.com/leotrace-hq/leoprevent-plugin/wire"
 )
 
 // TestParseEventSnakeCase covers the VS Code / Claude-compat dialect.
@@ -246,5 +247,72 @@ func TestDeliverPromptNoticeStaysSystemMessageOnly(t *testing.T) {
 	}
 	if len(m) != 1 {
 		t.Errorf("copilot prompt notice must carry exactly systemMessage; got %s", out)
+	}
+}
+
+// Copilot exports no entrypoint variable, but it does not need to: its two runtimes
+// speak DIFFERENT dialects of the same hook, so the payload already names its sender.
+func TestEnvironmentFromStdinDialect(t *testing.T) {
+	vscode := New()
+	if _, err := vscode.ParseEvent([]byte(`{"session_id":"s1","hook_event_name":"Stop","cwd":"/w"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if env := vscode.Environment(agent.Event{}); env.Name != wire.EnvCopilotVSCode {
+		t.Errorf("snake_case dialect = %q, want %q", env.Name, wire.EnvCopilotVSCode)
+	}
+
+	cli := New()
+	if _, err := cli.ParseEvent([]byte(`{"sessionId":"s2","stopReason":"end_turn","cwd":"/w"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if env := cli.Environment(agent.Event{}); env.Name != wire.EnvCopilotCLI {
+		t.Errorf("camelCase dialect = %q, want %q", env.Name, wire.EnvCopilotCLI)
+	}
+}
+
+// The signal here is STRUCTURAL — which spelling the keys used — not a value the
+// vendor handed us. Quoting "the keys were snake_case" into Raw as though it were a
+// vendor string would misrepresent where the answer came from.
+func TestEnvironmentRawIsEmptyForAStructuralSignal(t *testing.T) {
+	a := New()
+	if _, err := a.ParseEvent([]byte(`{"session_id":"s1","hook_event_name":"Stop"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if env := a.Environment(agent.Event{}); env.Raw != "" {
+		t.Errorf("Environment().Raw = %q, want empty", env.Raw)
+	}
+}
+
+// A payload carrying BOTH dialects resolves to VS Code, matching the per-field
+// snake_case-wins precedence in hookPayload. The value matters less than the fact that
+// it is fixed: an ambiguous payload must not classify differently run to run.
+func TestEnvironmentAmbiguousDialectIsDeterministic(t *testing.T) {
+	const both = `{"session_id":"s1","sessionId":"s1","hook_event_name":"Stop","hookEventName":"agentStop"}`
+	for i := 0; i < 3; i++ {
+		a := New()
+		if _, err := a.ParseEvent([]byte(both)); err != nil {
+			t.Fatal(err)
+		}
+		if env := a.Environment(agent.Event{}); env.Name != wire.EnvCopilotVSCode {
+			t.Fatalf("both-dialect payload = %q, want %q (snake_case wins, as it does per-field)", env.Name, wire.EnvCopilotVSCode)
+		}
+	}
+}
+
+// Before ParseEvent — and after one that recognised neither dialect — the answer is
+// unknown, NOT a default runtime. Defaulting to the CLI would be the worst option
+// available: it is the unverified path, so a wrong answer there is the one least
+// likely to be noticed.
+func TestEnvironmentWithoutADialectIsUnknown(t *testing.T) {
+	if env := New().Environment(agent.Event{}); env.Name != wire.EnvUnknown {
+		t.Errorf("un-parsed adapter = %q, want %q", env.Name, wire.EnvUnknown)
+	}
+
+	a := New()
+	if _, err := a.ParseEvent([]byte(`{"cwd":"/w"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if env := a.Environment(agent.Event{}); env.Name != wire.EnvUnknown {
+		t.Errorf("dialect-free payload = %q, want %q", env.Name, wire.EnvUnknown)
 	}
 }

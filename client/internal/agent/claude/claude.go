@@ -18,6 +18,7 @@ package claude
 
 import (
 	"encoding/json"
+	"os"
 
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/agent"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/review"
@@ -33,6 +34,55 @@ func New() *Adapter { return &Adapter{} }
 
 // Name identifies the adapter.
 func (*Adapter) Name() string { return "claude" }
+
+// entrypointEnv is the environment variable Claude Code exports naming the surface
+// it was launched as. Hooks inherit it: Claude Code builds a hook's environment by
+// spreading its own process environment, so a Stop hook sees whatever the app set.
+const entrypointEnv = "CLAUDE_CODE_ENTRYPOINT"
+
+// Environment reports which Claude Code surface this turn ran in, from
+// $CLAUDE_CODE_ENTRYPOINT. Independent of the transcript and of stdin, so it is
+// known even on turns where everything else about the agent fails to parse.
+func (*Adapter) Environment(agent.Event) agent.Environment {
+	raw := os.Getenv(entrypointEnv)
+	return agent.Environment{Name: classifyEntrypoint(raw), Raw: raw}
+}
+
+// classifyEntrypoint maps a raw $CLAUDE_CODE_ENTRYPOINT onto the closed wire.Env*
+// vocabulary. Pure, so the mapping is tested directly rather than through the
+// process environment.
+//
+// The cases below are the values Claude Code itself recognizes; they are grouped by
+// PRODUCT SURFACE, which is the question this field answers ("was this the desktop
+// app or the terminal"), not by transport. That is why the remote_* family splits
+// rather than collapsing into one "remote" bucket: a remote session driven from the
+// desktop app is still the desktop app to the developer who ran it, and folding it
+// in with claude.ai would answer a question nobody asked.
+//
+// An unrecognized value is EnvUnknown ON PURPOSE — it is not guessed at by prefix.
+// A wrong bucket is worse than an honest unknown here, because it is invisible: it
+// silently inflates a real surface's numbers, whereas an unknown paired with
+// TurnMeta.EnvironmentRaw is self-announcing and tells us exactly what to add.
+func classifyEntrypoint(raw string) string {
+	switch raw {
+	case "cli", "ssh-remote", "bench":
+		return wire.EnvClaudeTerminal
+	case "claude-desktop", "claude-desktop-3p", "remote_desktop":
+		return wire.EnvClaudeDesktop
+	case "remote", "remote_baku", "remote_trigger":
+		return wire.EnvClaudeWeb
+	case "remote_mobile":
+		return wire.EnvClaudeMobile
+	case "claude-vscode":
+		return wire.EnvClaudeVSCode
+	case "local-agent", "local_agent", "remote_cowork", "claude-coworker", "claude-coworker-terminal":
+		return wire.EnvClaudeCowork
+	case "sdk-cli", "sdk-ts", "sdk-py", "mcp":
+		return wire.EnvClaudeSDK
+	default:
+		return wire.EnvUnknown
+	}
+}
 
 // hookPayload is the Claude hook stdin JSON (verified fields). The same shape
 // covers both the UserPromptSubmit and Stop events we register for; cwd +

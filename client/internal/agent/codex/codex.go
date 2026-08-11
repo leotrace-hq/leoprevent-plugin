@@ -35,6 +35,23 @@ func New() *Adapter { return &Adapter{} }
 // Name identifies the adapter.
 func (*Adapter) Name() string { return "codex" }
 
+// Environment reports the surface as the Codex CLI, flatly.
+//
+// This adapter only ever runs from the CLI's own Stop hook, so reaching it IS the
+// classification — the headless path never gets here (`leoprevent exec` drives Codex
+// itself and attributes to wire.EnvCodexExec via clirun.Options.Environment).
+//
+// NO FINER SPLIT, and deliberately no guess at one. Codex has other surfaces — an
+// IDE extension, a cloud runner — but unlike Claude Code it exports no entrypoint we
+// have verified, so any terminal-vs-IDE distinction here would be invented rather
+// than observed. Raw is left empty for the same reason: there is no signal to quote,
+// and a fabricated one would be indistinguishable in the log from a real reading.
+// If a future CLI does expose one, read it here and map it — the wire vocabulary
+// already has room.
+func (*Adapter) Environment(agent.Event) agent.Environment {
+	return agent.Environment{Name: wire.EnvCodexCLI}
+}
+
 // hookPayload is the Codex hook stdin JSON. The fields we use match Claude's;
 // Codex extras (turn_id/model) are simply not declared.
 type hookPayload struct {
