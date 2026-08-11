@@ -8,8 +8,7 @@ to fix it before you see "done."
 > binaries it ships. You can read exactly what leaves your machine — and compile it yourself: clone,
 > run `./build.sh` (needs only the Go toolchain named in `go.mod`), and the hashes match the shipped
 > binaries byte-for-byte. Details: [Verify the binary matches this
-> source](#verify-the-binary-matches-this-source). The security rules and the review server stay
-> private — the client contains none of them.
+> source](#verify-the-binary-matches-this-source).
 
 ## Claude Code
 
