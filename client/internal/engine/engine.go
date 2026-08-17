@@ -23,6 +23,7 @@ import (
 
 	"github.com/leotrace-hq/leoprevent-plugin/buildinfo"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/agent"
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/enroll"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/gate"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/notify"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/outcome"
@@ -280,6 +281,18 @@ func notifyReviewSkipped(a agent.Agent, ev agent.Event, err error, log *slog.Log
 		return
 	}
 	log.Warn("review skipped", "reason", se.Reason.String(), "err", se.Error())
+	// ⚠️ RECORD A REJECTED KEY BEFORE THE THROTTLE, not after. The notice is deliberately
+	// shown once per session, but the FACT that the server refused this credential has to be
+	// recorded on every occurrence: it is what lets the next turn's enrolment treat the key as
+	// invalid and re-mint, which is the only way a machine holding an unrecognised key ever
+	// recovers. Suppressing the record along with the notice would leave it stuck forever.
+	//
+	// Unauthorized ONLY. A timeout, an unreachable server or a 5xx say nothing about whether
+	// the key is valid, and discarding a good credential because the server blipped would
+	// rotate the developer's other machines out over a transient fault.
+	if se.Reason == review.SkipUnauthorized {
+		enroll.MarkStaleKey(ev.SessionID)
+	}
 	if !notify.FirstThisSession(ev.SessionID, se.Reason.String()) {
 		log.Debug("skip notice already shown this session, suppressing", "reason", se.Reason.String())
 		return

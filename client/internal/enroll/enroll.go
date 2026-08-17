@@ -35,8 +35,14 @@ import (
 	"github.com/leotrace-hq/leoprevent-plugin/wire"
 )
 
-// throttleKey namespaces this attempt in the per-session scratch the skip notices use.
-const throttleKey = "enroll_attempt"
+// throttleKey namespaces a first-time enrolment attempt in the per-session scratch the skip
+// notices use. resetKey namespaces the SEPARATE re-enrolment attempt, so a machine recovering
+// from a rejected key is not silenced by having already tried a first-time enrolment earlier
+// in the same session.
+const (
+	throttleKey = "enroll_attempt"
+	resetKey    = "enroll_reset"
+)
 
 // Ensure enrols this machine if it has no key and has been given a token, and reports whether
 // cfg now carries a usable license key.
@@ -50,7 +56,24 @@ func Ensure(cfg *config.Config, cwd, sessionID string) bool {
 		return false
 	}
 	if cfg.LicenseKey != "" {
-		return true // already licensed; nothing to do
+		// ⚠️ A KEY THE SERVER REJECTED IS NOT A KEY. Without this branch a machine holding an
+		// unrecognised credential is stuck forever: it 401s on every call, fails open, reports
+		// nothing, and never enrols because it believes it is licensed. See stale.go for the
+		// live case that produced it and why recovery lands a turn late.
+		if !staleKeyMarked(sessionID) {
+			return true // licensed and nothing has told us otherwise
+		}
+		if !notify.FirstThisSession(sessionID, resetKey) {
+			// Already re-enrolled (or tried) this session. Trying again every turn would mint a
+			// fresh credential per turn for a machine the server keeps refusing, which is how a
+			// developer's other machines get rotated out by a problem on this one.
+			return true
+		}
+		slog.Warn("the server rejected this machine's license key; re-enrolling")
+		// Cleared in memory only. license.json is left alone until a mint SUCCEEDS, because
+		// deleting it on the way to a failed enrolment would take a possibly-recoverable
+		// credential away and leave nothing behind.
+		cfg.LicenseKey = ""
 	}
 	if cfg.EnrollToken == "" {
 		return false // no token pushed: this deployment does not use enrolment
@@ -100,6 +123,7 @@ func Ensure(cfg *config.Config, cwd, sessionID string) bool {
 	}
 
 	cfg.LicenseKey = resp.LicenseKey
+	clearStaleKey(sessionID)
 	slog.Info("enrolled this machine", "license", resp.LicenseID, "account", resp.AccountID,
 		"rotated", resp.Rotated, "path", path)
 	return true
