@@ -43,6 +43,12 @@ const (
 	EnvTier           = "LEOPREVENT_TIER"
 	EnvLicenseKey     = "LEOPREVENT_LICENSE_KEY"
 	EnvResolveImports = "LEOPREVENT_RESOLVE_IMPORTS" // 0|false|off|no disables cross-file context
+	// EnvEnrollToken is the ORG-scoped enrolment token an enterprise admin pushes through managed
+	// settings' `env` block. It is NOT a license key and cannot review anything: the server
+	// exchanges it for this machine's own per-user key (see client/internal/enroll). It rides the
+	// env because managed settings apply uniformly across an organisation, so one identical value
+	// is the only credential an admin can distribute — which is exactly what this is.
+	EnvEnrollToken = "LEOPREVENT_ENROLL_TOKEN"
 )
 
 // FileName is the committed config shipped at the plugin root.
@@ -145,6 +151,10 @@ type Config struct {
 	// $LEOPREVENT_RESOLVE_IMPORTS overrides either way). Widens cloud-tier egress
 	// (imported files leave the machine) — see the egress non-negotiable.
 	ResolveImports *bool `json:"resolve_imports,omitempty"`
+	// EnrollToken is the org enrolment token. OPTIONAL, and deliberately not required for anything:
+	// a deployment that hands developers their keys directly never sets it, and a missing one just
+	// means no enrolment is attempted. Never a review credential.
+	EnrollToken string `json:"enroll_token,omitempty"`
 }
 
 // ResolveImportsEnabled reports whether the cloud tier should resolve cross-file
@@ -206,6 +216,9 @@ func resolve(path string) (*Config, error) {
 	}
 	if v := os.Getenv(EnvLicenseKey); v != "" {
 		c.LicenseKey = v
+	}
+	if v := os.Getenv(EnvEnrollToken); v != "" {
+		c.EnrollToken = v
 	}
 	if v := os.Getenv(EnvResolveImports); v != "" {
 		enabled := !isFalsey(v)
