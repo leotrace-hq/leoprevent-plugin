@@ -285,6 +285,55 @@ func TestCloudShipOutcomePostsOutcome(t *testing.T) {
 	}
 }
 
+// The re-wake asks the agent what it assumed (review.AssumptionsAsk) and the answer
+// comes back inside the reply, so ShipOutcome must parse it out and ship it. This is
+// the ONLY place that happens, which is what gives the headless `exec` loop the same
+// behaviour as the Stop hook for free — both reach the server through here.
+func TestCloudShipOutcomeParsesAssumptionsFromTheReply(t *testing.T) {
+	var got wire.OutcomeRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"accepted":true,"scored":true}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	r, _ := New(&config.Config{ServerURL: srv.URL, Tier: config.TierCloud})
+	reply := "Resolved it to an IP.\n\n<leoprevent-assumptions>\n- the caller is already authenticated\n- LOG_DIR is set\n</leoprevent-assumptions>"
+	if _, _, err := r.ShipOutcome(outcome.Pending{ReviewID: "rid-9"}, nil, reply, wire.TurnMeta{}); err != nil {
+		t.Fatalf("ShipOutcome: %v", err)
+	}
+	if !got.AssumptionsReported {
+		t.Fatal("assumptions_reported must be true when the agent answered")
+	}
+	if len(got.Assumptions) != 2 || got.Assumptions[0] != "the caller is already authenticated" {
+		t.Fatalf("assumptions wrong: %q", got.Assumptions)
+	}
+	// The reply is the record of what the agent said. Lifting the block out of it into
+	// a structured field must not also EDIT that record.
+	if got.AgentResponse != reply {
+		t.Errorf("agent_response must ship verbatim, got %q", got.AgentResponse)
+	}
+}
+
+// An agent that ignores the ask (or a surface with no transcript to read the reply
+// back from) must record "never answered", not an empty answer.
+func TestCloudShipOutcomeReportsNoAssumptionsWhenUnanswered(t *testing.T) {
+	var got wire.OutcomeRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"accepted":true,"scored":true}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	r, _ := New(&config.Config{ServerURL: srv.URL, Tier: config.TierCloud})
+	if _, _, err := r.ShipOutcome(outcome.Pending{ReviewID: "rid-9"}, nil, "Fixed it.", wire.TurnMeta{}); err != nil {
+		t.Fatalf("ShipOutcome: %v", err)
+	}
+	if got.AssumptionsReported || len(got.Assumptions) != 0 {
+		t.Fatalf("unanswered ask must record nothing: reported=%v %q", got.AssumptionsReported, got.Assumptions)
+	}
+}
+
 // ShipOutcome returns BOTH the introduced and pre-existing still-firing sets so the
 // engine can warn in-turn AND seed the cross-turn ledger.
 func TestCloudShipOutcomeReturnsBothStillFiringSets(t *testing.T) {

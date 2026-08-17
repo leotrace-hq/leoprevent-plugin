@@ -309,6 +309,29 @@ type OutcomeRequest struct {
 	// hardcoded constant…"). A body.
 	AgentResponse string `json:"agent_response,omitempty"`
 
+	// Assumptions are the things the agent says it treated as true WITHOUT verifying
+	// this turn ("the caller is already authenticated", "this input is validated
+	// upstream") — the re-wake prompt asks for them (review.AssumptionsAsk) and the
+	// client parses them back out of AgentResponse deterministically, with no model
+	// call (review.ParseAssumptions).
+	//
+	// COLLECTION ONLY. Nothing gates on these and no surface renders them; they exist
+	// so the history is there when we want to analyse it, rather than starting cold.
+	// Bodies (model-authored prose), so they are logged only when body logging is on.
+	//
+	// They ride /outcome rather than /review because that is where the ANSWER lands:
+	// the ask goes out on the block, and the agent replies during the re-wake, which
+	// the client reads at the FINAL Stop. So they are captured only on a turn that
+	// blocked, which is the whole population that gets asked.
+	Assumptions []string `json:"assumptions,omitempty"`
+	// AssumptionsReported distinguishes "the agent answered and had none" (true, empty
+	// Assumptions) from "the agent never answered" (false) — a slice with omitempty
+	// cannot tell those apart, and they are different facts: the first is a clean empty
+	// result, the second is an agent that ignored the ask, was truncated, or ran on a
+	// surface with no transcript to read the reply back from (copilot). Same shape and
+	// reason as ReviewEvent.AckClassified.
+	AssumptionsReported bool `json:"assumptions_reported,omitempty"`
+
 	// Full-turn agent token usage + wall-clock, captured at the FINAL Stop so it
 	// SPANS the re-wake fix leoprevent induced. The /review Meta was captured at the
 	// FIRST Stop (pre-re-wake) and therefore UNDER-counts a blocked turn; the

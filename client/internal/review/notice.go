@@ -79,17 +79,17 @@ func (e *SkipError) Unwrap() error { return e.Err }
 func SkipNotice(reason SkipReason) string {
 	switch reason {
 	case SkipUnreachable:
-		return "⚠️ LeoPrevent: can't reach the security server — this turn was NOT reviewed (is it running / reachable?)."
+		return "⚠️ LeoPrevent: can't reach the security server. This turn was NOT reviewed (is it running / reachable?)."
 	case SkipUnauthorized:
-		return "⚠️ LeoPrevent: license invalid or not entitled — this turn was NOT reviewed (check your license_key / tier)."
+		return "⚠️ LeoPrevent: license invalid or not entitled. This turn was NOT reviewed (check your license_key / tier)."
 	case SkipServerError:
-		return "⚠️ LeoPrevent: the security server errored — this turn was NOT reviewed."
+		return "⚠️ LeoPrevent: the security server errored. This turn was NOT reviewed."
 	case SkipMisconfigured:
-		return "⚠️ LeoPrevent: misconfigured (check leoprevent.json) — this turn was NOT reviewed."
+		return "⚠️ LeoPrevent: misconfigured (check leoprevent.json). This turn was NOT reviewed."
 	case SkipTimedOut:
-		return "⚠️ LeoPrevent: the security review timed out — this turn was NOT reviewed (server slow or overloaded)."
+		return "⚠️ LeoPrevent: the security review timed out. This turn was NOT reviewed (server slow or overloaded)."
 	default:
-		return "⚠️ LeoPrevent: security review unavailable — this turn was NOT reviewed."
+		return "⚠️ LeoPrevent: security review unavailable. This turn was NOT reviewed."
 	}
 }
 
@@ -105,7 +105,7 @@ func SkipNotice(reason SkipReason) string {
 func FixStillVulnerableNotice(findings []wire.Finding) string {
 	const max = 3
 	var b strings.Builder
-	b.WriteString("⚠️ LeoPrevent: your fix is still vulnerable — the re-check after your change still flags:")
+	b.WriteString("⚠️ LeoPrevent: your fix is still vulnerable. The re-check after your change still flags:")
 	for i, f := range findings {
 		if i == max {
 			break
@@ -124,7 +124,7 @@ func FixStillVulnerableNotice(findings []wire.Finding) string {
 			b.WriteString(": " + f.Issue)
 		}
 		if f.Fix != "" {
-			b.WriteString(" — fix: " + f.Fix)
+			b.WriteString(". Fix: " + f.Fix)
 		}
 	}
 	if len(findings) > max {
