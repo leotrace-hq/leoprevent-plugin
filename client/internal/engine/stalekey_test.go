@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/agent"
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/config"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/review"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/transcript"
 	"github.com/leotrace-hq/leoprevent-plugin/wire"
@@ -28,6 +29,18 @@ func (noticeAgent) DeliverReview(string, string, int, []wire.Finding) ([]byte, e
 }
 func (noticeAgent) DeliverNotice(string) ([]byte, error)               { return []byte("{}"), nil }
 func (noticeAgent) DeliverPromptNotice(string, string) ([]byte, error) { return []byte("{}"), nil }
+
+// withKey isolates the per-user config dir and puts a license key in it, so MarkStaleKey has a
+// credential to mark. Without this the test would read the DEVELOPER'S REAL key and write a
+// marker into their real scratch dir — which the first version of this test did, and which would
+// have armed a spurious re-enrolment on this machine.
+func withKey(t *testing.T, key string) {
+	t.Helper()
+	t.Cleanup(config.SetUserConfigDirForTest(t.TempDir()))
+	if _, err := config.SaveLicense(key); err != nil {
+		t.Fatalf("seed license: %v", err)
+	}
+}
 
 // markerCount counts the stale-key markers on disk.
 func markerCount(t *testing.T) int {
@@ -60,6 +73,7 @@ func TestOnlyAnUnauthorizedSkipMarksTheKeyStale(t *testing.T) {
 		review.SkipMisconfigured,
 	} {
 		t.Setenv("TMPDIR", t.TempDir())
+		withKey(t, "lp_live_forthistest")
 		notifyReviewSkipped(noticeAgent{}, ev, &review.SkipError{Reason: reason}, log, io.Discard)
 		if n := markerCount(t); n != 0 {
 			t.Errorf("%s marked the key stale (%d markers); only an unauthorized reply may", reason, n)
@@ -68,6 +82,7 @@ func TestOnlyAnUnauthorizedSkipMarksTheKeyStale(t *testing.T) {
 
 	// And the one that must: a refused credential.
 	t.Setenv("TMPDIR", t.TempDir())
+	withKey(t, "lp_live_forthistest")
 	notifyReviewSkipped(noticeAgent{}, ev, &review.SkipError{Reason: review.SkipUnauthorized}, log, io.Discard)
 	if markerCount(t) != 1 {
 		t.Error("an unauthorized reply did not mark the key stale, so the machine can never recover")
@@ -79,6 +94,7 @@ func TestOnlyAnUnauthorizedSkipMarksTheKeyStale(t *testing.T) {
 // and if the record were suppressed alongside the notice a machine would stay stuck forever.
 func TestTheMarkSurvivesTheNoticeThrottle(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
+	withKey(t, "lp_live_forthistest")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ev := agent.Event{SessionID: "sess-throttle"}
 

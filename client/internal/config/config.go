@@ -134,6 +134,19 @@ func readUserLicense() string {
 	return u.LicenseKey
 }
 
+// UserLicenseKey returns the key from the per-user license file, or "".
+//
+// Exported for the rejected-key recovery (client/internal/enroll), which needs to name the
+// credential this machine is using WITHOUT requiring a full, valid Config: Load fails outright on
+// a missing server_url, so a recovery built on it would silently no-op in exactly the degraded
+// situations it exists for — and did, until a test caught it.
+//
+// ⚠️ IT READS THE FILE, NOT THE RESOLVED KEY. If a key came from $LEOPREVENT_LICENSE_KEY this
+// returns a different value (or none). That is the honest behaviour rather than a gap: an
+// env-provided key cannot be replaced by enrolment anyway, since the env wins the resolution
+// above, so there is nothing for a recovery to do in that case.
+func UserLicenseKey() string { return readUserLicense() }
+
 // Config is the resolved client configuration.
 type Config struct {
 	ServerURL string `json:"server_url"`

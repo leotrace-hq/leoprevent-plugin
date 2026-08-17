@@ -55,24 +55,28 @@ func Ensure(cfg *config.Config, cwd, sessionID string) bool {
 	if cfg == nil {
 		return false
 	}
+	rejected := ""
 	if cfg.LicenseKey != "" {
 		// ⚠️ A KEY THE SERVER REJECTED IS NOT A KEY. Without this branch a machine holding an
 		// unrecognised credential is stuck forever: it 401s on every call, fails open, reports
-		// nothing, and never enrols because it believes it is licensed. See stale.go for the
-		// live case that produced it and why recovery lands a turn late.
-		if !staleKeyMarked(sessionID) {
+		// nothing, and never enrols because it believes it is licensed. Keyed on the CREDENTIAL,
+		// not the session, so it recovers in a later session and in a headless run — see stale.go
+		// for why the session-keyed first attempt at this was almost useless.
+		if !staleKeyMarked(cfg.LicenseKey) {
 			return true // licensed and nothing has told us otherwise
 		}
-		if !notify.FirstThisSession(sessionID, resetKey) {
-			// Already re-enrolled (or tried) this session. Trying again every turn would mint a
-			// fresh credential per turn for a machine the server keeps refusing, which is how a
-			// developer's other machines get rotated out by a problem on this one.
+		if coolingDown() {
+			// Even a freshly minted key can be refused (a misconfigured account, a revoked seat
+			// re-revoked). Without this a machine in that state mints once per turn forever.
+			slog.Warn("this machine's license key was rejected, but a re-enrolment was attempted recently; waiting")
 			return true
 		}
 		slog.Warn("the server rejected this machine's license key; re-enrolling")
-		// Cleared in memory only. license.json is left alone until a mint SUCCEEDS, because
-		// deleting it on the way to a failed enrolment would take a possibly-recoverable
-		// credential away and leave nothing behind.
+		noteReEnrolAttempt()
+		// Remembered so the marker can be cleared on success. Cleared in memory only: license.json
+		// is left alone until a mint SUCCEEDS, because deleting it on the way to a failed enrolment
+		// would take a possibly-recoverable credential away and leave nothing behind.
+		rejected = cfg.LicenseKey
 		cfg.LicenseKey = ""
 	}
 	if cfg.EnrollToken == "" {
@@ -123,7 +127,7 @@ func Ensure(cfg *config.Config, cwd, sessionID string) bool {
 	}
 
 	cfg.LicenseKey = resp.LicenseKey
-	clearStaleKey(sessionID)
+	clearStaleKey(rejected)
 	slog.Info("enrolled this machine", "license", resp.LicenseID, "account", resp.AccountID,
 		"rotated", resp.Rotated, "path", path)
 	return true

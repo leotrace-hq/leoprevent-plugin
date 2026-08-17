@@ -291,7 +291,7 @@ func notifyReviewSkipped(a agent.Agent, ev agent.Event, err error, log *slog.Log
 	// the key is valid, and discarding a good credential because the server blipped would
 	// rotate the developer's other machines out over a transient fault.
 	if se.Reason == review.SkipUnauthorized {
-		enroll.MarkStaleKey(ev.SessionID)
+		enroll.MarkStaleKey()
 	}
 	if !notify.FirstThisSession(ev.SessionID, se.Reason.String()) {
 		log.Debug("skip notice already shown this session, suppressing", "reason", se.Reason.String())
