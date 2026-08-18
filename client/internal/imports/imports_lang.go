@@ -21,9 +21,9 @@ var (
 	pyImportRe = regexp.MustCompile(`(?m)^[ \t]*import[ \t]+([\w.]+)(?:[ \t]+as[ \t]+(\w+))?`)
 )
 
-func pythonContext(root, relpath, src string, refs map[string]bool) []string {
+func pythonContext(root, relpath, src string, refs map[string]bool) []candidate {
 	dir := path.Dir(norm(relpath))
-	var out []string
+	var out []candidate
 
 	for _, m := range pyFromRe.FindAllStringSubmatch(src, -1) {
 		module, namesClause := m[1], m[2]
@@ -34,15 +34,15 @@ func pythonContext(root, relpath, src string, refs map[string]bool) []string {
 		base, rest := pyResolveBase(root, dir, module)
 		if rest == "" {
 			// `from <pkg> import x`: x is a name in the package OR a submodule.
-			out = append(out, join(base, "__init__.py"), base+".py")
+			out = append(out, namedCandidates(join(base, "__init__.py"), base+".py")...)
 			for _, n := range names {
-				out = append(out, join(base, n+".py"), join(base, n, "__init__.py"))
+				out = append(out, namedCandidates(join(base, n+".py"), join(base, n, "__init__.py"))...)
 			}
 		} else {
 			modpath := join(base, rest)
-			out = append(out, modpath+".py", join(modpath, "__init__.py"))
+			out = append(out, namedCandidates(modpath+".py", join(modpath, "__init__.py"))...)
 			for _, n := range names {
-				out = append(out, join(modpath, n+".py"))
+				out = append(out, namedCandidates(join(modpath, n+".py"))...)
 			}
 		}
 	}
@@ -58,7 +58,8 @@ func pythonContext(root, relpath, src string, refs map[string]bool) []string {
 			continue
 		}
 		p := strings.Join(segs, "/")
-		out = append(out, p+".py", join(p, "__init__.py"))
+		// `import pkg.mod` names a MODULE, not a symbol in it.
+		out = append(out, moduleCandidates(p+".py", join(p, "__init__.py"))...)
 	}
 	return out
 }
@@ -108,9 +109,13 @@ var (
 
 var jsExts = []string{".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
 
-func jsContext(root, relpath, src string, refs map[string]bool) []string {
+// inlineTypeRe matches a per-binding `type` modifier inside a named import clause —
+// `{ type Event, loadRecords }` — so only the value bindings gate the file.
+var inlineTypeRe = regexp.MustCompile(`\btype\s+[A-Za-z_$][\w$]*\s*,?`)
+
+func jsContext(root, relpath, src string, refs map[string]bool) []candidate {
 	dir := path.Dir(norm(relpath))
-	var out []string
+	var out []candidate
 	add := func(clause, spec string) {
 		if !isRelativeSpec(spec) {
 			return // bare specifier → node_modules / built-in, not local
@@ -118,10 +123,34 @@ func jsContext(root, relpath, src string, refs map[string]bool) []string {
 		if clause != "" && !anyRef(refs, identsOf(clause)...) {
 			return
 		}
-		out = append(out, jsCandidates(dir, spec)...)
+		// A binding clause names symbols; a bare `export * from` does not.
+		out = append(out, labelled(clause != "", jsCandidates(dir, spec))...)
+	}
+	valueOnly := func(clause string) string {
+		// A TYPE-ONLY import brings nothing into the running program: TypeScript
+		// erases it, so the changed code cannot call through it and the file behind
+		// it cannot hold a sink this diff reaches. Dropping those bindings is the
+		// same gate the resolver already applies, applied to a binding that provably
+		// cannot be reached — not a guess about relevance. It matters because a
+		// TypeScript codebase's types live in big declaration modules: pulling one to
+		// judge a change that merely names a shape is the single most expensive thing
+		// this resolver used to do, and there is no vulnerability to find in it.
+		//
+		// `import type { A } from …` drops whole; `import { type A, b } from …` keeps
+		// b and drops A. A clause that ends up empty is not resolved at all.
+		if !skipTypeOnlyImports {
+			return clause
+		}
+		c := strings.TrimSpace(clause)
+		if c == "type" || strings.HasPrefix(c, "type ") || strings.HasPrefix(c, "type{") {
+			return ""
+		}
+		return inlineTypeRe.ReplaceAllString(clause, "")
 	}
 	for _, m := range jsImportFromRe.FindAllStringSubmatch(src, -1) {
-		add(m[1], m[2])
+		if clause := valueOnly(m[1]); strings.TrimSpace(strings.Trim(clause, "{}, ")) != "" {
+			add(clause, m[2])
+		}
 	}
 	for _, m := range jsRequireRe.FindAllStringSubmatch(src, -1) {
 		add(m[1], m[2])
@@ -164,11 +193,11 @@ func identsOf(clause string) []string {
 
 var javaImportRe = regexp.MustCompile(`(?m)^\s*import\s+(static\s+)?([\w.]+)\s*;`)
 
-func javaContext(idx *repoIndex, src string, refs map[string]bool) []string {
+func javaContext(idx *repoIndex, src string, refs map[string]bool) []candidate {
 	if idx == nil || !idx.ok {
 		return nil
 	}
-	var out []string
+	var out []candidate
 	for _, m := range javaImportRe.FindAllStringSubmatch(src, -1) {
 		static, fqcn := m[1] != "", m[2]
 		segs := strings.Split(fqcn, ".")
@@ -187,7 +216,7 @@ func javaContext(idx *repoIndex, src string, refs map[string]bool) []string {
 			continue
 		}
 		suffix := strings.Join(segs[:classIdx+1], "/") + ".java"
-		out = append(out, idx.endsWith(suffix)...)
+		out = append(out, namedCandidates(idx.endsWith(suffix)...)...)
 	}
 	return out
 }
@@ -200,7 +229,7 @@ var (
 	goBlockLineRe    = regexp.MustCompile(`(?m)^\s*(?:([\w.]+)\s+)?"([^"]+)"`)
 )
 
-func goContext(idx *repoIndex, src string, refs map[string]bool) []string {
+func goContext(idx *repoIndex, src string, refs map[string]bool) []candidate {
 	if idx == nil || !idx.ok || idx.goModule == "" {
 		return nil
 	}
@@ -215,7 +244,7 @@ func goContext(idx *repoIndex, src string, refs map[string]bool) []string {
 		}
 	}
 
-	var out []string
+	var out []candidate
 	for _, im := range imps {
 		if im.pathSpec != idx.goModule && !strings.HasPrefix(im.pathSpec, idx.goModule+"/") {
 			continue // third-party / stdlib
@@ -229,7 +258,9 @@ func goContext(idx *repoIndex, src string, refs map[string]bool) []string {
 		}
 		dir := strings.TrimPrefix(im.pathSpec, idx.goModule)
 		dir = strings.TrimPrefix(dir, "/")
-		out = append(out, idx.goPackageFiles(dir)...)
+		// A Go import names a PACKAGE and pulls every file in it, so no individual
+		// file here was claimed to define anything the added code wrote.
+		out = append(out, moduleCandidates(idx.goPackageFiles(dir)...)...)
 	}
 	return out
 }
@@ -245,11 +276,11 @@ var (
 // changed file is namespaced (`using …;` present), pull the conventionally-named
 // file `<Type>.cs` for each PascalCase type the added code references. One class
 // per file named after the class is the dominant C# convention.
-func csContext(idx *repoIndex, src string, refs map[string]bool) []string {
+func csContext(idx *repoIndex, src string, refs map[string]bool) []candidate {
 	if idx == nil || !idx.ok || !csUsingRe.MatchString(src) {
 		return nil
 	}
-	var out []string
+	var out []candidate
 	seen := map[string]bool{}
 	for t := range refs {
 		if seen[t] || len(t) == 0 || t[0] < 'A' || t[0] > 'Z' {
@@ -259,7 +290,7 @@ func csContext(idx *repoIndex, src string, refs map[string]bool) []string {
 			continue
 		}
 		seen[t] = true
-		out = append(out, idx.byBase(t+".cs")...)
+		out = append(out, namedCandidates(idx.byBase(t+".cs")...)...)
 	}
 	return out
 }

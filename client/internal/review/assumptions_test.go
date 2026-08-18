@@ -22,20 +22,41 @@ func TestParseAssumptionsAcceptsTheAskAsWritten(t *testing.T) {
 	}
 }
 
-// The whole point of the ask riding the re-wake is that it reaches the agent, so the
-// blocked-turn prompt must actually carry it.
-func TestFindingsPromptCarriesTheAssumptionsAsk(t *testing.T) {
-	p := BuildFindingsPrompt([]wire.Finding{{
-		Rule: "ssrf", Name: "Server-Side Request Forgery",
-		Location: "app.py:12", Issue: "url comes from the request", Fix: "resolve and deny private ranges",
-	}})
-	if !strings.Contains(p, AssumptionsAsk) {
-		t.Fatal("the cloud re-wake prompt does not carry the assumptions ask")
+// The re-wake prompt must NOT carry the assumptions ask (LEO-113). The session is a
+// Stop hook's only channel in either direction, so anything this prompt asks for is
+// rendered on the developer's screen, and the answer is rendered under it: a ten-bullet
+// block landed directly beneath the security finding it was meant to be read with.
+//
+// Asserted on EVERY branch of the prompt, not just the introduced one. The ask used to
+// be appended unconditionally, after the switch, so a re-add would reach a clean turn
+// and a surfaced-only turn as well, and checking one branch would let two through.
+//
+// The tags are checked SEPARATELY from the ask string: re-adding a reworded ask that
+// still asks for the block is the same bug wearing different words, and a test that
+// only compared against AssumptionsAsk would pass.
+func TestFindingsPromptDoesNotAskForAssumptions(t *testing.T) {
+	prompts := map[string]string{
+		"introduced": BuildFindingsPrompt([]wire.Finding{{
+			Rule: "ssrf", Name: "Server-Side Request Forgery",
+			Location: "app.py:12", Issue: "url comes from the request", Fix: "resolve and deny private ranges",
+		}}),
+		"preexisting": BuildFindingsPrompt([]wire.Finding{{
+			Rule: "ssrf", Name: "Server-Side Request Forgery",
+			Location: "old.py:3", Preexisting: true,
+		}}),
+		"suggest-only": BuildFindingsPrompt([]wire.Finding{{
+			Rule: "proxy-path-handling", Name: "Proxy Path Handling",
+			Location: "nginx.conf:8", SuggestOnly: true,
+		}}),
+		"clean": BuildFindingsPrompt(nil),
 	}
-	// It must come last: the prompt's actual job is the fix, and an unrelated request
-	// competing with that instruction is how the fix gets half-done.
-	if !strings.HasSuffix(p, AssumptionsAsk) {
-		t.Fatal("the assumptions ask must be the LAST thing in the prompt, after every finding")
+	for branch, p := range prompts {
+		if strings.Contains(p, AssumptionsAsk) {
+			t.Errorf("%s: the re-wake prompt carries the assumptions ask; it renders in the developer's session (LEO-113)", branch)
+		}
+		if strings.Contains(p, assumptionsOpen) || strings.Contains(p, assumptionsClose) {
+			t.Errorf("%s: the re-wake prompt asks for the assumptions block, however it is worded (LEO-113)", branch)
+		}
 	}
 }
 

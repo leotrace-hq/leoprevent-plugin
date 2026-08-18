@@ -13,17 +13,41 @@ import (
 // turn, with no error anywhere). Change one, change the other, and re-run
 // TestParseAssumptionsAcceptsTheAskAsWritten — it parses the literal example the ask
 // shows, so a drift between them fails the build rather than the dataset.
+//
+// The ask itself is currently NOT SENT (LEO-113) — see AssumptionsAsk. The contract is
+// maintained anyway: it is what makes re-enabling a one-line change rather than a
+// re-derivation, and a drift introduced while nothing is asking would only surface as
+// an empty dataset long after the fact.
 const (
 	assumptionsOpen  = "<leoprevent-assumptions>"
 	assumptionsClose = "</leoprevent-assumptions>"
 )
 
-// AssumptionsAsk asks the agent to report the assumptions it made this turn. It is
-// appended to the cloud re-wake prompt (BuildFindingsPrompt), so it goes out only on
-// a turn LeoPrevent already blocked, and the answer rides the re-wake reply the
-// client already captures. This is collection only: nothing gates on the answer.
+// AssumptionsAsk asks the agent to report the assumptions it made this turn.
 //
-// Three properties are load-bearing:
+// ⚠️ IT IS NOT SENT (LEO-113). BuildFindingsPrompt no longer appends it, so nothing
+// asks and ParseAssumptions consequently reports `false` on every turn. The text and
+// the parser are kept so re-enabling is one WriteString, and so the drift guard below
+// keeps holding if that happens.
+//
+// WHY IT WAS REMOVED, since the original reasoning reads as sound and the ask would
+// otherwise be re-added: it was priced as free because it rides a re-wake that already
+// happens, needing no extra round trip, no tokens of its own and no second block. What
+// that pricing left out is the developer's screen. A Stop hook's only channel to the
+// agent is the injected re-wake message, and the only channel back is the agent's
+// reply; both are rendered in the session, so the ask paragraph AND a ten-bullet answer
+// block landed in the transcript on every blocked turn, directly beneath a security
+// finding the developer was meant to be reading. Reported live as the loudest thing on
+// screen after a block. There is no quieter variant: telling the agent to write the
+// block to a file instead trades the noise for a Write/Bash permission prompt on every
+// blocked turn, which interrupts harder and blocks the turn until answered.
+//
+// So the ask cannot be made invisible while the agent is the one answering it, and the
+// data it collected has no consumer: nothing gates on it and no surface renders it.
+// Re-enabling therefore needs a reason that outweighs the attention it spends, not just
+// a wish for the dataset.
+//
+// If it IS re-enabled, three properties of the wording are load-bearing:
 //
 //   - It sits LAST, after every finding. The re-wake's job is to get the vulnerability
 //     fixed; an unrelated request competing with that instruction is how the fix gets

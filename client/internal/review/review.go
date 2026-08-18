@@ -150,11 +150,11 @@ func BuildFindingsPrompt(findings []wire.Finding) string {
 		b.WriteString("Pre-existing issues NOT introduced by your change this turn. Do NOT edit these pre-existing lines. If code YOU added this turn routes through one of them, make your added code safe without touching the old lines (e.g. wire it to a safe sibling helper), but only when that stays compatible with existing data and flows; when unsure, leave it. Once you're done, tell the developer these exist and ask whether they want them fixed:\n\n")
 		writeFindingGroups(&b, preexisting)
 	}
-	// The assumptions ask goes LAST, after every finding, so it never competes with
-	// the fix instruction that is this prompt's actual job. Cloud only: the local tier
-	// never reaches the server, so asking there would collect an answer with nowhere to
-	// put it, at the cost of noise in the developer's reply. See AssumptionsAsk.
-	b.WriteString(AssumptionsAsk)
+	// The prompt deliberately ends with the findings. It used to append AssumptionsAsk
+	// here; that is removed (LEO-113) and must not come back without a decision, because
+	// the session is the only channel a Stop hook has in either direction, so the ask and
+	// the agent's answer both render on the developer's screen. See AssumptionsAsk for
+	// what that cost, and for the parser that is still ready if it is re-enabled.
 	return b.String()
 }
 
