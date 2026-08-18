@@ -100,6 +100,11 @@ const reviewTimeout = limits.ClientReviewDeadline
 // rulesTimeout is short: /rules just serves content.
 const rulesTimeout = 10 * time.Second
 
+// enrollTimeout is short for the same reason the review deadline is generous: enrolment does no
+// model work, just a handful of indexed writes, and it sits on the developer's Stop path. A slow
+// enrolment must cost the turn its review rather than the developer's patience.
+const enrollTimeout = 10 * time.Second
+
 // outcomeTimeout bounds the SYNCHRONOUS /outcome re-verify at the post-fix Stop: the
 // server re-judges the agent's fix and returns the verdict so the client can warn the
 // developer in-turn. The dev DOES wait here — but only on a blocked-and-fixed turn,
@@ -119,6 +124,50 @@ func (c *Client) Review(changes []wire.ChangedFile, context []wire.ContextFile, 
 	var out wire.ReviewResponse
 	err := c.post("/review", reviewTimeout, wire.ReviewRequest{Changes: changes, Context: context, Meta: meta}, &out)
 	return out, err
+}
+
+// Enroll exchanges an organisation enrolment token for this machine's own per-user license key.
+//
+// ⚠️ IT DOES NOT USE c.licenseKey, AND THAT IS THE WHOLE POINT: this is the call a machine makes
+// when it has no license key yet, so the Authorization header carries the ENROLMENT token instead.
+// A client built with an empty license key can still make this one call.
+//
+// Bounded by enrollTimeout and returns a plain error on any non-200, so the caller can fail open
+// the way the rest of this client does: an enrolment that does not work costs a turn its review,
+// never the developer's session.
+func (c *Client) Enroll(token string, req wire.EnrollRequest) (wire.EnrollResponse, error) {
+	var out wire.EnrollResponse
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return out, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), enrollTimeout)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/enroll", bytes.NewReader(payload))
+	if err != nil {
+		return out, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return out, fmt.Errorf("apiclient: POST /enroll: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		// The body is deliberately uninformative — the server answers every refusal identically —
+		// so there is nothing to unpack: the status is the whole answer.
+		return out, fmt.Errorf("apiclient: POST /enroll: status %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, fmt.Errorf("apiclient: POST /enroll: decode: %w", err)
+	}
+	if out.LicenseKey == "" {
+		return out, fmt.Errorf("apiclient: POST /enroll: the response carried no key")
+	}
+	return out, nil
 }
 
 // Rules posts rule IDs to /rules (local tier) and returns their content plus

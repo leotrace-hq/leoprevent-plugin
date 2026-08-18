@@ -85,4 +85,15 @@ const (
 	// 32 KiB is ~8k tokens: generous for any real reply (the recorded ones run 1–4 KB),
 	// small enough that a runaway agent cannot dominate an /outcome request.
 	MaxAgentReplyBytes = 32 * 1024
+
+	// Client (review) — bound the assumptions the agent reports on a blocked turn
+	// (/outcome's `assumptions`). Same character as MaxAgentReplyBytes: model-authored
+	// text that egresses and is persisted, so its length is the agent's to choose
+	// unless we pick a ceiling. Both are re-applied SERVER-side at ingest — a cap that
+	// lives only in the shipped (public) client binds a well-behaved client and nothing
+	// else. One sentence each is what the prompt asks for; 512 bytes leaves room for a
+	// long one, and 32 entries is far past any honest answer (observed replies list a
+	// handful) while keeping the field bounded.
+	MaxAssumptions     = 32
+	MaxAssumptionBytes = 512
 )

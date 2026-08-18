@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/transcript"
 	"github.com/leotrace-hq/leoprevent-plugin/limits"
 )
 
@@ -70,6 +71,15 @@ func initRepo(t *testing.T) (dir, session string) {
 	session = sanitize(t.Name())
 	t.Cleanup(func() { _ = os.Remove(scratchPath(session)) })
 	return dir, session
+}
+
+// aliased converts ChangedFiles' result into the local mirror type the assertions use.
+func aliased(got []transcript.Change) []changeAlias {
+	out := make([]changeAlias, len(got))
+	for i, c := range got {
+		out[i] = changeAlias{c.FilePath, c.AddedText, c.FullContent}
+	}
+	return out
 }
 
 func findChange(changes []changeAlias, path string) (changeAlias, bool) {
@@ -791,5 +801,145 @@ func TestChangedFilesReportsWhyItFellBack(t *testing.T) {
 	}
 	if _, ok, skip, err := ChangedFiles(dir, session); !ok || skip != "" || err != nil {
 		t.Errorf("healthy path: ok=%v skip=%q err=%v, want ok with no reason", ok, skip, err)
+	}
+}
+
+// A mid-turn `git checkout` imports somebody else's already-merged commits into the
+// working tree, and the diff against the turn-start baseline reports them as this
+// turn's work. That is not cosmetic: such a finding anchors inside AddedLines, so it
+// classifies as INTRODUCED, and the re-wake tells the agent to fix introduced findings
+// "directly, don't ask" — i.e. to edit a teammate's merged commit.
+//
+// Observed live: a mid-turn `git checkout -B <branch> origin/main` pulled in 28 files,
+// and the review force-fix-flagged a permission file changed by another PR two hours
+// earlier.
+//
+// The second half is the one that matters more: the agent's OWN work must survive the
+// same pass. Every simpler fix ("re-baseline onto HEAD", "drop anything clean against
+// HEAD") drops it, which is a missed vulnerability under a clean verdict.
+func TestMidTurnCheckoutIsNotAttributedToTheAgent(t *testing.T) {
+	dir, session := initRepo(t)
+
+	// A colleague's work, already merged and published on a remote-tracking ref before
+	// this turn starts.
+	gitRun(t, dir, "checkout", "-q", "-b", "colleague")
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte("{\n  \"allow\": [\"everything\"]\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-q", "-m", "colleague: widen the allowlist")
+	gitRun(t, dir, "update-ref", "refs/remotes/origin/main", "HEAD")
+	gitRun(t, dir, "checkout", "-q", "master")
+
+	// The turn begins on the OLD commit, which does not have the colleague's file.
+	if err := CaptureBaseline(dir, session); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mid-turn, the agent moves the tree onto the published branch AND writes code of
+	// its own on top.
+	gitRun(t, dir, "checkout", "-q", "-B", "work", "refs/remotes/origin/main")
+	if err := os.WriteFile(filepath.Join(dir, "app.py"), []byte("import os\nos.system(cmd)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	changes, ok, _, err := ChangedFiles(dir, session)
+	if err != nil || !ok {
+		t.Fatalf("ChangedFiles: ok=%v err=%v", ok, err)
+	}
+	if _, found := findChange(aliased(changes), "settings.json"); found {
+		t.Error("attributed a colleague's already-published commit to this turn — a finding there would classify as INTRODUCED and be force-fixed")
+	}
+	if _, found := findChange(aliased(changes), "app.py"); !found {
+		t.Error("dropped the agent's OWN edit, which is a missed review under a clean verdict")
+	}
+}
+
+// The agent's own COMMIT is the case every simpler fix gets wrong: the file is clean
+// against HEAD and its change is explained by history, so both "re-baseline onto HEAD"
+// and "drop anything clean against HEAD" would skip it. It is not published, so it
+// stays in scope here.
+func TestAgentsOwnCommitStaysInScopeAcrossACheckout(t *testing.T) {
+	dir, session := initRepo(t)
+	gitRun(t, dir, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+	if err := CaptureBaseline(dir, session); err != nil {
+		t.Fatal(err)
+	}
+
+	// The agent writes and commits, then switches branch — HEAD moves twice.
+	gitRun(t, dir, "checkout", "-q", "-B", "work")
+	if err := os.WriteFile(filepath.Join(dir, "app.py"), []byte("import os\nos.system(cmd)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-q", "-m", "agent: add a shell call")
+
+	changes, ok, _, err := ChangedFiles(dir, session)
+	if err != nil || !ok {
+		t.Fatalf("ChangedFiles: ok=%v err=%v", ok, err)
+	}
+	c, found := findChange(aliased(changes), "app.py")
+	if !found {
+		t.Fatal("the agent's own committed work went unreviewed")
+	}
+	if !strings.Contains(c.FullContent, "os.system(cmd)") {
+		t.Errorf("reviewed the wrong content: %q", c.FullContent)
+	}
+}
+
+// With the tree still on the commit it started on, nothing can have been imported, so
+// the subtraction must not run at all — an ordinary turn keeps its every change.
+func TestNoHistoryMoveLeavesTheChangeSetAlone(t *testing.T) {
+	dir, session := initRepo(t)
+	gitRun(t, dir, "update-ref", "refs/remotes/origin/main", "HEAD")
+	if err := CaptureBaseline(dir, session); err != nil {
+		t.Fatal(err)
+	}
+	// Revert app.py to exactly the published content: identical to origin/main, but
+	// HEAD never moved, so this is the agent's edit and must still be reviewed.
+	if err := os.WriteFile(filepath.Join(dir, "app.py"), []byte("import os\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "new.py"), []byte("print(1)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changes, ok, _, err := ChangedFiles(dir, session)
+	if err != nil || !ok {
+		t.Fatalf("ChangedFiles: ok=%v err=%v", ok, err)
+	}
+	if _, found := findChange(aliased(changes), "new.py"); !found {
+		t.Error("dropped a file the agent created on a turn with no history move")
+	}
+}
+
+// An older client's scratch file has no history header. The subtraction must then be
+// skipped entirely rather than guessed at — reviewing more, never less.
+func TestOldScratchWithoutAHistoryHeaderReviewsEverything(t *testing.T) {
+	dir, session := initRepo(t)
+	gitRun(t, dir, "update-ref", "refs/remotes/origin/main", "HEAD")
+	if err := CaptureBaseline(dir, session); err != nil {
+		t.Fatal(err)
+	}
+	// Rewrite the scratch in the OLD format: baseline ref only.
+	data, rerr := os.ReadFile(scratchPath(session))
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	first := strings.SplitN(string(data), "\n", 2)[0]
+	if err := os.WriteFile(scratchPath(session), []byte(first+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	gitRun(t, dir, "checkout", "-q", "-B", "work")
+	if err := os.WriteFile(filepath.Join(dir, "app.py"), []byte("import os\nos.system(cmd)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changes, ok, _, err := ChangedFiles(dir, session)
+	if err != nil || !ok {
+		t.Fatalf("ChangedFiles: ok=%v err=%v", ok, err)
+	}
+	if _, found := findChange(aliased(changes), "app.py"); !found {
+		t.Error("an old-format scratch must disable the subtraction, not drop files")
 	}
 }

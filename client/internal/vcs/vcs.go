@@ -73,6 +73,24 @@ const gitTimeout = 10 * time.Second
 // later ChangedFiles call can diff against it. A no-op (nil) when cwd is not a
 // git repo — the Stop hook then falls back to the transcript. Errors are
 // returned for logging only; the caller fails open regardless.
+// Baseline scratch header keys, and the bound on how many remote tips are recorded.
+//
+// Both prefixes are deliberately TAB-FREE: the untracked snapshot below is parsed by
+// looking for a tab, so a header line is invisible to that parser and an older client
+// reads a newer scratch file without confusion.
+const (
+	baselineHeadPrefix = "#head "
+	publishedTipPrefix = "#tip "
+	// A repository with more remote branches than this gets no subtraction rather
+	// than an unbounded walk on the developer's Stop path. Failing that way costs a
+	// noisier review, never a missed one.
+	maxPublishedTips = 64
+	// How many of those tips are actually diffed at Stop. Only tips that are
+	// ANCESTORS of the current HEAD can explain the tree's content, which in practice
+	// is one or two; the cap bounds the pathological case.
+	maxTipsDiffed = 8
+)
+
 func CaptureBaseline(cwd, sessionID string) error {
 	// GC stale baselines on every turn-start, BEFORE any early return, so the
 	// scratch dir is swept even when this turn's cwd is empty or not a git repo.
@@ -100,10 +118,54 @@ func CaptureBaseline(cwd, sessionID string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	// Line 1 = the baseline ref. Following lines = "hash\tpath" for each untracked
-	// file, so ChangedFiles can skip pre-existing untracked files that didn't change.
-	content := ref + "\n" + snapshotUntracked(cwd)
+	// Line 1 = the baseline ref. Then the HISTORY header (see snapshotHistory), then
+	// "hash\tpath" for each untracked file, so ChangedFiles can skip pre-existing
+	// untracked files that didn't change. Header lines carry NO tab, which is what the
+	// untracked parser keys on, so an older client's format is read unchanged and a
+	// newer scratch is read safely by an older client.
+	content := ref + "\n" + snapshotHistory(cwd) + snapshotUntracked(cwd)
 	return os.WriteFile(path, []byte(content), 0o600)
+}
+
+// snapshotHistory records where the repository's HISTORY stood at turn start: the
+// commit HEAD pointed at, and every remote-tracking tip.
+//
+// It is what lets ChangedFiles tell the agent's work from somebody else's. The diff
+// against the baseline answers "what differs from turn start", which is deliberately
+// blind to WHO wrote it — that blindness is the feature, and is why Bash writes,
+// generators and `--fix` formatters are all caught. Its blind spot is a git operation
+// that rewrites the tree FROM HISTORY (checkout, switch, pull, merge, rebase, reset),
+// which imports other people's already-merged commits and presents them as this turn's
+// work. Observed live: a mid-turn `git checkout -B <branch> origin/main` pulled 28
+// files in, and the review force-fix-flagged a permission file changed by somebody
+// else's PR two hours earlier.
+//
+// Best-effort by design: any git error yields "" and the subtraction is simply not
+// attempted, which reviews MORE rather than less.
+func snapshotHistory(cwd string) string {
+	var b strings.Builder
+	if head, err := git(cwd, "rev-parse", "HEAD"); err == nil {
+		if h := strings.TrimSpace(head); h != "" {
+			b.WriteString(baselineHeadPrefix + h + "\n")
+		}
+	}
+	out, err := git(cwd, "for-each-ref", "--format=%(objectname)", "refs/remotes/")
+	if err != nil {
+		return b.String()
+	}
+	seen := map[string]bool{}
+	for _, ln := range strings.Split(strings.TrimSpace(out), "\n") {
+		sha := strings.TrimSpace(ln)
+		if sha == "" || seen[sha] {
+			continue
+		}
+		seen[sha] = true
+		b.WriteString(publishedTipPrefix + sha + "\n")
+		if len(seen) >= maxPublishedTips {
+			break
+		}
+	}
+	return b.String()
 }
 
 // snapshotUntracked records each untracked-but-not-ignored file with a content
@@ -180,21 +242,44 @@ const (
 // to the transcript parser, and skip says why. ok=true with an empty slice means git authoritatively
 // saw no changes (allow the stop). Untracked-but-not-ignored files are included
 // as fully-added.
+// BaselineInfo reports how this turn's baseline behaved, for the review event.
+//
+// It exists because the subtraction in dropImportedByHistory is the one step here that
+// can REMOVE code from review, and an over-subtraction is silent by nature — the turn
+// simply looks quieter. The client log names the dropped paths on the developer's own
+// machine; these two fields are what make the same thing visible fleet-wide.
+type BaselineInfo struct {
+	// Head is the commit HEAD pointed at when the turn started, so a turn whose tree
+	// moved through history can be reconstructed without the developer's reflog.
+	Head string
+	// ImportedDropped counts files excluded because their content was already
+	// published before the turn — brought in by a checkout, pull, merge or rebase
+	// rather than written by the agent.
+	ImportedDropped int
+}
+
+// ChangedFiles is ChangedFilesWithInfo without the diagnostics, kept as the stable
+// entry point for callers that do not report them.
 func ChangedFiles(cwd, sessionID string) (changes []transcript.Change, ok bool, skip SkipReason, err error) {
+	changes, ok, skip, _, err = ChangedFilesWithInfo(cwd, sessionID)
+	return changes, ok, skip, err
+}
+
+func ChangedFilesWithInfo(cwd, sessionID string) (changes []transcript.Change, ok bool, skip SkipReason, info BaselineInfo, err error) {
 	// Sweep stale baselines on the Stop path too — not just turn-start — so GC runs
 	// on essentially every hook invocation regardless of event or git status. (The
 	// active session's own baseline is fresh — rewritten this turn — so it's never
 	// the one removed.) Belt-and-suspenders to the CaptureBaseline sweep.
 	cleanupStale()
 	if cwd == "" || sessionID == "" {
-		return nil, false, SkipNoCwdOrSession, nil
+		return nil, false, SkipNoCwdOrSession, BaselineInfo{}, nil
 	}
 	if !isGitRepo(cwd) {
-		return nil, false, SkipNotGitRepo, nil
+		return nil, false, SkipNotGitRepo, BaselineInfo{}, nil
 	}
 	data, rerr := os.ReadFile(scratchPath(sessionID))
 	if rerr != nil {
-		return nil, false, SkipNoBaselineFile, nil // no baseline recorded → fall back
+		return nil, false, SkipNoBaselineFile, BaselineInfo{}, nil // no baseline recorded → fall back
 	}
 	// Line 1 is the baseline ref; the rest is the "hash\tpath" snapshot of files
 	// that were ALREADY untracked at turn start (so we can skip the ones the agent
@@ -202,17 +287,30 @@ func ChangedFiles(cwd, sessionID string) (changes []transcript.Change, ok bool, 
 	lines := strings.Split(string(data), "\n")
 	baseline := strings.TrimSpace(lines[0])
 	if baseline == "" {
-		return nil, false, SkipEmptyBaseline, nil
+		return nil, false, SkipEmptyBaseline, BaselineInfo{}, nil
 	}
 	baseUntracked := map[string]string{} // path → baseline content hash
+	var baseHead string
+	var publishedTips []string
 	for _, ln := range lines[1:] {
 		if tab := strings.IndexByte(ln, '\t'); tab > 0 {
 			baseUntracked[strings.TrimSpace(ln[tab+1:])] = ln[:tab]
+			continue
+		}
+		// Header lines (tab-free) record where history stood at turn start. Absent on a
+		// scratch written by an older client, which simply disables the subtraction.
+		switch {
+		case strings.HasPrefix(ln, baselineHeadPrefix):
+			baseHead = strings.TrimSpace(strings.TrimPrefix(ln, baselineHeadPrefix))
+		case strings.HasPrefix(ln, publishedTipPrefix):
+			if sha := strings.TrimSpace(strings.TrimPrefix(ln, publishedTipPrefix)); sha != "" {
+				publishedTips = append(publishedTips, sha)
+			}
 		}
 	}
 	root, rerr := git(cwd, "rev-parse", "--show-toplevel")
 	if rerr != nil {
-		return nil, false, SkipNoRepoRoot, nil
+		return nil, false, SkipNoRepoRoot, BaselineInfo{}, nil
 	}
 	root = strings.TrimSpace(root)
 
@@ -222,7 +320,7 @@ func ChangedFiles(cwd, sessionID string) (changes []transcript.Change, ok bool, 
 	// up as "R…\told\tnew" — the pairing the per-file diff below depends on.
 	nameStatus, derr := git(cwd, "diff", "--name-status", "-M", baseline)
 	if derr != nil {
-		return nil, false, SkipBaselineGone, nil // baseline unreadable (e.g. GC'd) → fall back
+		return nil, false, SkipBaselineGone, BaselineInfo{}, nil // baseline unreadable (e.g. GC'd) → fall back
 	}
 	files := trackedFiles(nameStatus)
 
@@ -246,6 +344,11 @@ func ChangedFiles(cwd, sessionID string) (changes []transcript.Change, ok bool, 
 		files = append(files, trackedFile{path: p})
 		untrackedSet[p] = true
 	}
+
+	info.Head = baseHead
+	before := len(files)
+	files = dropImportedByHistory(cwd, files, baseHead, publishedTips)
+	info.ImportedDropped = before - len(files)
 
 	total := 0
 	for _, tf := range files {
@@ -329,7 +432,7 @@ func ChangedFiles(cwd, sessionID string) (changes []transcript.Change, ok bool, 
 		}
 		changes = append(changes, ch)
 	}
-	return changes, true, "", nil
+	return changes, true, "", info, nil
 }
 
 // trackedFile is one reviewable entry from `git diff --name-status`: the current
@@ -686,4 +789,96 @@ func cleanupStale() {
 			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}
+}
+
+// dropImportedByHistory removes files whose current content was ALREADY PUBLISHED
+// before this turn began — code the agent did not write, brought into the working tree
+// by a git operation that rewrites it from history (checkout, switch, pull, merge,
+// rebase, reset --hard).
+//
+// ⚠️ WHY THIS IS NEEDED AT ALL. The diff against the turn-start baseline answers "what
+// differs from turn start" and is deliberately blind to authorship — that is what
+// catches Bash writes, `sed -i`, generators and `--fix` formatters, and it is the whole
+// reason the git baseline replaced transcript parsing. But a mid-turn checkout imports
+// other people's merged commits, and the diff reports them as this turn's work. The
+// consequence is not cosmetic: a finding on such a file is anchored inside AddedLines,
+// so it classifies as INTRODUCED, and the re-wake tells the agent to fix introduced
+// findings "directly, don't ask". Live, that flagged a permission file changed by
+// somebody else's PR two hours earlier, and a compliant agent would have reverted it.
+//
+// ⚠️ THE TEST IS PER FILE AND CONTENT-BASED, and it has to be, because the obvious
+// alternatives all fail in the dangerous direction. "Re-baseline onto the new HEAD" and
+// "drop anything clean against HEAD" both look right and both silently drop the agent's
+// OWN committed work — a missed vulnerability under a clean verdict, which is the one
+// failure this pipeline never accepts. A file is dropped only when its content on disk
+// is identical to a commit that was already reachable from a remote-tracking ref BEFORE
+// the turn started. The agent's own fresh commit is not, so it stays in scope.
+//
+// Gated on HEAD having actually MOVED: with the tree still on the commit it started on,
+// nothing can have been imported, and the check is skipped entirely.
+//
+// Fails toward reviewing more, at every step: no recorded header (an older client's
+// scratch), an unresolvable HEAD, an unreadable tip, or a git error all subtract
+// nothing. Every drop is logged, so an over-subtraction is visible rather than silent.
+func dropImportedByHistory(cwd string, files []trackedFile, baseHead string, tips []string) []trackedFile {
+	if baseHead == "" || len(tips) == 0 || len(files) == 0 {
+		return files
+	}
+	head, err := git(cwd, "rev-parse", "HEAD")
+	if err != nil {
+		return files
+	}
+	if strings.TrimSpace(head) == baseHead {
+		return files // the tree never moved through history this turn
+	}
+
+	// A tip can only explain the current tree if it is an ancestor of where HEAD now
+	// is; an unrelated feature branch cannot. In practice that leaves one or two.
+	published := map[string]bool{}
+	checked := 0
+	for _, tip := range tips {
+		if checked >= maxTipsDiffed {
+			break
+		}
+		if _, aerr := git(cwd, "merge-base", "--is-ancestor", tip, "HEAD"); aerr != nil {
+			continue // not an ancestor, or git could not say → ignore this tip
+		}
+		checked++
+		// Paths that DIFFER from this tip. Anything changed-since-baseline but absent
+		// here is byte-identical to already-published code.
+		diff, derr := git(cwd, "diff", "--name-only", tip)
+		if derr != nil {
+			continue
+		}
+		differs := map[string]bool{}
+		for _, p := range strings.Split(strings.TrimSpace(diff), "\n") {
+			if p = strings.TrimSpace(p); p != "" {
+				differs[p] = true
+			}
+		}
+		for _, tf := range files {
+			if !differs[tf.path] {
+				published[tf.path] = true
+			}
+		}
+	}
+	if len(published) == 0 {
+		return files
+	}
+
+	kept := make([]trackedFile, 0, len(files))
+	var dropped []string
+	for _, tf := range files {
+		if published[tf.path] {
+			dropped = append(dropped, tf.path)
+			continue
+		}
+		kept = append(kept, tf)
+	}
+	// Loud on purpose. Subtracting from the review set is the one thing here that can
+	// hide a real change, so it is never silent — the same posture as the binary-file
+	// skip above.
+	slog.Info("vcs: files NOT reviewed — content already published before this turn, so the agent did not write it (a mid-turn checkout/pull/merge brought them in)",
+		"dropped", len(dropped), "kept", len(kept), "paths", strings.Join(dropped, ","))
+	return kept
 }

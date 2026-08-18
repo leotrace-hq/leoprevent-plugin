@@ -37,6 +37,34 @@ func TestParseAndLess(t *testing.T) {
 	}
 }
 
+// TestPrereleaseNotNewerThanRelease pins the dev-channel safety property (LEO-57):
+// a dev build's prerelease version ("X.Y.Z-dev.<sha>") must never be treated as
+// NEWER than the base release "X.Y.Z", so a production install on the base version
+// gets no update nag if it ever saw a dev version advertised. The suffix is truncated
+// at the first non-digit, so the prerelease and its release compare EQUAL on the base.
+func TestPrereleaseNotNewerThanRelease(t *testing.T) {
+	pre, ok := parse("0.2.16-dev.a1b2c3d")
+	if !ok {
+		t.Fatal("a dev prerelease must still parse (it carries a numeric base)")
+	}
+	rel, _ := parse("0.2.16")
+	if less(rel, pre) {
+		t.Error("release must not be considered older than a same-base dev prerelease")
+	}
+	if less(pre, rel) {
+		t.Error("a same-base dev prerelease must not be considered older than its release")
+	}
+
+	// End to end: a prod install exactly on the base release, told a dev version is
+	// "latest", must not nag.
+	restore := SetUserConfigDirForTest(t.TempDir())
+	t.Cleanup(restore)
+	RecordLatest("0.2.16-dev.a1b2c3d")
+	if latest, ok := PendingNag("claude", "0.2.16"); ok {
+		t.Errorf("prod install on the base release must not nag off a dev version: got (%q,%v)", latest, ok)
+	}
+}
+
 func TestPendingNagFiresOncePerDay(t *testing.T) {
 	restore := SetUserConfigDirForTest(t.TempDir())
 	t.Cleanup(restore)

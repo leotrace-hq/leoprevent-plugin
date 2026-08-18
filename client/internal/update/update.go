@@ -305,6 +305,14 @@ func ContextMessage(agent, current, latest string) string {
 // ignored; a trailing pre-release/build suffix on the patch (e.g. "5-rc1") is
 // truncated at the first non-digit. Returns ok=false for anything without at least
 // one numeric segment (e.g. "dev", "").
+//
+// The suffix truncation is LOAD-BEARING for the dev channel (LEO-57): a dev build
+// carries a prerelease version ("0.2.16-dev.<sha>") which parses to the SAME base
+// [0,2,16] as its eventual release "0.2.16", so a dev build is never advertised as
+// NEWER than that release — a production install on the base version never nags off
+// a dev release. (The primary guarantee is still environment isolation: a dev build
+// is advertised only by the dev server, which prod installs never contact. This
+// truncation is the same-base safety net.)
 func parse(v string) ([3]int, bool) {
 	var out [3]int
 	v = strings.TrimSpace(strings.TrimPrefix(v, "v"))

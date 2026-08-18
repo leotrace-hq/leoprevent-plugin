@@ -37,6 +37,7 @@ import (
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/config"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/delivery"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/engine"
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/enroll"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/notify"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/review"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/update"
@@ -190,6 +191,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		notifyMisconfigured()
 		return failOpen("%v", err)
 	}
+	// ENROLMENT, before the reviewer is built so the very first turn is reviewed rather than the
+	// second. A no-op unless an admin pushed an enrolment token and this machine has no key yet;
+	// fail-open and at most one attempt per session (see internal/enroll).
+	enroll.Ensure(cfg, ev.Cwd, ev.SessionID)
+
 	reviewer, err := delivery.New(cfg)
 	if err != nil {
 		slog.Error("reviewer init failed; failing open", "err", err.Error())

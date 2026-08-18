@@ -26,7 +26,14 @@ cd "$(dirname "$0")"
 # Version stamped into the binary (buildinfo.Version), from ./VERSION — the single
 # source of truth. The client compares it against the server's advertised latest to
 # drive the update nag. Unset → "dev" (nag stays silent).
-VERSION=$(tr -d '[:space:]' < VERSION 2>/dev/null || true)
+#
+# LP_VERSION overrides ./VERSION when set. It exists for the dev release channel, which
+# stamps a prerelease ("<VERSION>-dev.<sha>") so a dev build is identifiable and never
+# advertises as newer than its base release. The default path is UNCHANGED — a customer
+# verifying reproducibility runs this with LP_VERSION unset and gets ./VERSION, and the
+# release script writes the effective version into the published ./VERSION so the
+# reproducibility rebuild matches (see scripts/deploy-plugin.sh).
+VERSION="${LP_VERSION:-$(tr -d '[:space:]' < VERSION 2>/dev/null || true)}"
 [ -n "$VERSION" ] || VERSION=dev
 
 LDFLAGS="-s -w -buildid= -X github.com/leotrace-hq/leoprevent-plugin/buildinfo.Version=$VERSION"

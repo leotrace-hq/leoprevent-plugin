@@ -23,6 +23,7 @@ import (
 
 	"github.com/leotrace-hq/leoprevent-plugin/buildinfo"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/agent"
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/enroll"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/gate"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/notify"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/outcome"
@@ -113,7 +114,7 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 	// never waits on the re-review.
 	if ev.StopHookActive {
 		if p, ok := outcome.Take(ev.SessionID); ok {
-			after, _, _, _ := changedFiles(a, ev, log) // agent's state now (incl. the fix)
+			after, _, _, _, _ := changedFiles(a, ev, log) // agent's state now (incl. the fix)
 			// Re-parse turn meta NOW (final Stop): ParseTurnMeta scopes from the last
 			// genuine user message — a "Stop hook feedback:" re-wake is NOT one — so this
 			// capture spans the whole turn incl. the fix, unlike the first-Stop /review meta.
@@ -171,7 +172,7 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 		return 0
 	}
 
-	changes, usedGit, baselineSkip, err := changedFiles(a, ev, log)
+	changes, usedGit, baselineSkip, baseInfo, err := changedFiles(a, ev, log)
 	if err != nil {
 		return failOpen(fmt.Errorf("changed files: %w", err))
 	}
@@ -204,6 +205,11 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 	// detection) that is otherwise indistinguishable server-side, so without this a
 	// developer silently stuck on it looks exactly like one who is fine.
 	meta.GitBaseline, meta.BaselineSkip = usedGit, string(baselineSkip)
+	// Where the tree started, and how many files were excluded as already-published
+	// (a mid-turn checkout/pull/merge imports somebody else's merged commits). The
+	// second is the one worth watching: it is the only step that removes code from
+	// review, so an over-subtraction would otherwise just look like a quiet turn.
+	meta.BaselineHead, meta.ImportedDropped = baseInfo.Head, baseInfo.ImportedDropped
 
 	// Cross-turn pre-existing resolution: if a PRIOR block surfaced pre-existing vulns
 	// the dev hadn't fixed, and this turn touches those files, re-judge just those rules
@@ -280,6 +286,18 @@ func notifyReviewSkipped(a agent.Agent, ev agent.Event, err error, log *slog.Log
 		return
 	}
 	log.Warn("review skipped", "reason", se.Reason.String(), "err", se.Error())
+	// ⚠️ RECORD A REJECTED KEY BEFORE THE THROTTLE, not after. The notice is deliberately
+	// shown once per session, but the FACT that the server refused this credential has to be
+	// recorded on every occurrence: it is what lets the next turn's enrolment treat the key as
+	// invalid and re-mint, which is the only way a machine holding an unrecognised key ever
+	// recovers. Suppressing the record along with the notice would leave it stuck forever.
+	//
+	// Unauthorized ONLY. A timeout, an unreachable server or a 5xx say nothing about whether
+	// the key is valid, and discarding a good credential because the server blipped would
+	// rotate the developer's other machines out over a transient fault.
+	if se.Reason == review.SkipUnauthorized {
+		enroll.MarkStaleKey()
+	}
 	if !notify.FirstThisSession(ev.SessionID, se.Reason.String()) {
 		log.Debug("skip notice already shown this session, suppressing", "reason", se.Reason.String())
 		return
@@ -546,17 +564,17 @@ func turnMeta(a agent.Agent, ev agent.Event, log *slog.Logger, now time.Time) wi
 // would reveal it must survive the default log level. The reason rides along
 // because the causes need opposite fixes (a baseline that was never recorded vs
 // one git later lost).
-func changedFiles(a agent.Agent, ev agent.Event, log *slog.Logger) ([]transcript.Change, bool, vcs.SkipReason, error) {
-	changes, ok, skip, err := vcs.ChangedFiles(ev.Cwd, ev.SessionID)
+func changedFiles(a agent.Agent, ev agent.Event, log *slog.Logger) ([]transcript.Change, bool, vcs.SkipReason, vcs.BaselineInfo, error) {
+	changes, ok, skip, info, err := vcs.ChangedFilesWithInfo(ev.Cwd, ev.SessionID)
 	if ok {
 		changes = dropSecrets(changes, log)
 		log.Info("changed files via git baseline", "changed", len(changes))
-		return changes, true, "", err
+		return changes, true, "", info, err
 	}
 	log.Info("DEGRADED review: no git baseline, using transcript fallback",
 		"reason", string(skip), "cwd", ev.Cwd)
 	changes, err = a.ChangedFiles(ev)
-	return dropSecrets(changes, log), false, skip, err
+	return dropSecrets(changes, log), false, skip, vcs.BaselineInfo{}, err
 }
 
 // dropSecrets removes secret/credential files (private keys, .env, credential

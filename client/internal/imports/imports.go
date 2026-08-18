@@ -14,6 +14,10 @@
 //     ADDED code; self-contained turns resolve nothing and pay nothing.
 //   - Read-only, guarded — secret files (gate.IsSecretPath) and symlinks are
 //     dropped exactly as in vcs, and reads are confined to the repo root.
+//   - SLICED — a resolved helper is sent as the spans the changed code can reach,
+//     not the whole file (slice.go). The excerpt carries each retained line's real
+//     file line number, so a cited file:line stays true; slicing fails toward the
+//     whole file, so a parser gap costs bytes and never context.
 //
 // Languages: Python, JavaScript/TypeScript, Java, Go, C#. Python and JS/TS resolve
 // relative specifiers to a path directly; Java/Go/C# need a one-time repo file
@@ -41,6 +45,16 @@ import (
 // (limits.MaxContextFileBytes / MaxContextTotalBytes).
 const maxIndexFiles = 20000 // pathological monorepo → skip index-based langs (Java/Go/C#) rather than walk forever
 
+// sliceBodies and skipTypeOnlyImports are ALWAYS true in the shipped binary. They
+// exist so the measurement harness (slice_measure_test.go) can price this change
+// against the behaviour it replaced on a real repository, instead of quoting an
+// estimate — the two are unexported, have no config or env path to them, and the
+// only writer is that test. Do not add one.
+var (
+	sliceBodies         = true
+	skipTypeOnlyImports = true
+)
+
 // Resolve returns the imported in-repo files the changed code references. root is
 // the absolute repo root; each change's FilePath is repo-root-relative. Returns
 // nil when nothing resolves (the common, self-contained case). Never errors — a
@@ -62,12 +76,26 @@ func Resolve(root string, changes []transcript.Change) []wire.ContextFile {
 		return idx
 	}
 
-	var out []wire.ContextFile
-	seen := map[string]bool{}
-	total := 0
+	// Slicing is gated on the identifiers of the WHOLE turn, not of the one changed
+	// file that happened to resolve a helper first: a helper reached from two changed
+	// files must keep the bodies both of them call, and a helper is resolved once.
+	// Import GATING stays per-file (an import statement is a property of that file) —
+	// only the reachability question is turn-wide, which is the recall-safe direction.
+	turnRefs := map[string]bool{}
 	for _, c := range changes {
-		added := strings.TrimSpace(c.AddedText)
-		if added == "" {
+		for id := range identifiers(c.AddedText) {
+			turnRefs[id] = true
+		}
+	}
+
+	// Pass 1: collect the candidate paths and WHY each was pulled, first-seen order.
+	// The reason has to be merged across changed files before any file is read: a
+	// helper pulled by NAME from one file and by its package from another is a named
+	// pull, and reading it at first sight would take whichever reason arrived first.
+	var order []string
+	named := map[string]bool{}
+	for _, c := range changes {
+		if strings.TrimSpace(c.AddedText) == "" {
 			continue // nothing introduced here → nothing to gate on
 		}
 		src := c.FullContent
@@ -76,39 +104,86 @@ func Resolve(root string, changes []transcript.Change) []wire.ContextFile {
 		}
 		refs := identifiers(c.AddedText)
 
-		var rels []string
+		var cands []candidate
 		switch langOf(c.FilePath) {
 		case langPython:
-			rels = pythonContext(root, c.FilePath, src, refs)
+			cands = pythonContext(root, c.FilePath, src, refs)
 		case langJS:
-			rels = jsContext(root, c.FilePath, src, refs)
+			cands = jsContext(root, c.FilePath, src, refs)
 		case langJava:
-			rels = javaContext(getIdx(), src, refs)
+			cands = javaContext(getIdx(), src, refs)
 		case langGo:
-			rels = goContext(getIdx(), src, refs)
+			cands = goContext(getIdx(), src, refs)
 		case langCSharp:
-			rels = csContext(getIdx(), src, refs)
+			cands = csContext(getIdx(), src, refs)
 		default:
 			continue
 		}
-
-		for _, rel := range rels {
-			rel = norm(rel)
-			if rel == "" || changed[rel] || seen[rel] {
+		for _, cd := range cands {
+			rel := norm(cd.rel)
+			if rel == "" || changed[rel] {
 				continue
 			}
-			body, ok := safeRead(root, rel)
-			if !ok {
-				continue
+			if _, seen := named[rel]; !seen {
+				order = append(order, rel)
 			}
-			body = capBytes(body, limits.MaxContextFileBytes)
-			if total+len(body) > limits.MaxContextTotalBytes {
-				continue // budget spent — stop adding context (the change itself is unaffected)
-			}
-			seen[rel] = true
-			total += len(body)
-			out = append(out, wire.ContextFile{Path: rel, Content: body})
+			named[rel] = named[rel] || cd.named
 		}
+	}
+
+	// Pass 2: read, slice, and spend the egress budget.
+	var out []wire.ContextFile
+	total := 0
+	for _, rel := range order {
+		body, ok := safeRead(root, rel)
+		if !ok {
+			continue
+		}
+		// Selective function pulling: send the spans the changed code can reach,
+		// not the whole helper.
+		var nums []int
+		if excerpt, ln, sliced := sliceFile(rel, body, turnRefs, limits.MaxContextFileBytes, named[rel]); sliceBodies && sliced {
+			body, nums = excerpt, ln
+		} else {
+			body = capBytes(body, limits.MaxContextFileBytes)
+		}
+		if total+len(body) > limits.MaxContextTotalBytes {
+			continue // budget spent — stop adding context (the change itself is unaffected)
+		}
+		total += len(body)
+		out = append(out, wire.ContextFile{Path: rel, Content: body, Lines: nums})
+	}
+	return out
+}
+
+// candidate is a resolved path plus WHY the resolver pulled it.
+//
+// named means a symbol DEFINED IN THIS FILE was written in the added code: a
+// `from x import fetch`, an `import { fetch } from './x'`, a Java class, a C# type.
+// It is FALSE when the file came in on a broader claim — a Go import names a
+// PACKAGE and pulls every file in it, a Python `import pkg.mod` names a module, and
+// a JS `export * from './x'` re-export has no local binding to gate on at all.
+//
+// The distinction decides what happens when no span in the file looks reachable.
+// For a named pull, something in that file WAS referenced and the slicer just
+// cannot see how, so the file travels whole. For the rest, nothing ever claimed a
+// symbol here at all, and there is no premise to be conservative about: the file
+// travels as its skeleton. Measured on this repo, three quarters of the whole-file
+// fallback was the second kind, sent whole on the strength of a claim no import had
+// made.
+type candidate struct {
+	rel   string
+	named bool
+}
+
+// namedCandidates and moduleCandidates label a batch of resolved paths.
+func namedCandidates(rels ...string) []candidate  { return labelled(true, rels) }
+func moduleCandidates(rels ...string) []candidate { return labelled(false, rels) }
+
+func labelled(named bool, rels []string) []candidate {
+	out := make([]candidate, 0, len(rels))
+	for _, r := range rels {
+		out = append(out, candidate{rel: r, named: named})
 	}
 	return out
 }

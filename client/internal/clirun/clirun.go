@@ -114,7 +114,7 @@ func Loop(r engine.Reviewer, opts Options) (Result, error) {
 		case len(introStillFiring) > 0:
 			fmt.Fprintf(opts.Out, "⚠️  re-verify: %d introduced finding(s) still firing after the fix\n", len(introStillFiring))
 		default:
-			fmt.Fprintln(opts.Out, "✅ outcome shipped — fix re-verified clean")
+			fmt.Fprintln(opts.Out, "✅ outcome shipped: fix re-verified clean")
 		}
 	}
 
@@ -132,7 +132,7 @@ func Loop(r engine.Reviewer, opts Options) (Result, error) {
 
 		changes, ok, skip, err := vcs.ChangedFiles(opts.Cwd, session)
 		if err != nil || !ok {
-			fmt.Fprintf(opts.Out, "⚠️  no git baseline — cannot review (need a git repo); stopping (%s)\n", skip)
+			fmt.Fprintf(opts.Out, "⚠️  no git baseline, cannot review (need a git repo); stopping (%s)\n", skip)
 			return Result{Rounds: round}, nil
 		}
 		reviewable := gate.Run(changes)

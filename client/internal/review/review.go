@@ -36,7 +36,7 @@ type stopHookSpecificOutput struct {
 func BuildPrompt(changes []transcript.Change, selected []rulespec.Rule, metaPolicy string) string {
 	var b strings.Builder
 
-	b.WriteString("🔒 LeoPrevent: security review required — run in a FRESH SUBAGENT via the Task tool (subagent_type: general-purpose).\n\n")
+	b.WriteString("🔒 LeoPrevent: security review required. Run in a FRESH SUBAGENT via the Task tool (subagent_type: general-purpose).\n\n")
 
 	b.WriteString("## Changed code this turn\n\n")
 	for _, c := range changes {
@@ -44,7 +44,7 @@ func BuildPrompt(changes []transcript.Change, selected []rulespec.Rule, metaPoli
 	}
 
 	b.WriteString("## Candidate rules to check\n\n")
-	b.WriteString("These are heuristic candidates from a lexical pre-filter — not findings. Verify each against the code above and discard any that don't apply. Your verdict (specific violations, or **CLEAN**) is the result, not this list.\n\n")
+	b.WriteString("These are heuristic candidates from a lexical pre-filter, not findings. Verify each against the code above and discard any that don't apply. Your verdict (specific violations, or **CLEAN**) is the result, not this list.\n\n")
 	for _, r := range selected {
 		severity := ""
 		if r.Severity != "" {
@@ -59,7 +59,7 @@ func BuildPrompt(changes []transcript.Change, selected []rulespec.Rule, metaPoli
 		if label == "" {
 			label = r.ID
 		}
-		b.WriteString(fmt.Sprintf("**%s**%s — %s\n", label, severity, lookFor))
+		b.WriteString(fmt.Sprintf("**%s**%s: %s\n", label, severity, lookFor))
 		// does_not_apply_when is the precision lever — render it verbatim so the
 		// local judge can prune false positives, matching the server-side judge.
 		if dna := strings.TrimSpace(r.DoesNotApplyWhen); dna != "" {
@@ -70,7 +70,7 @@ func BuildPrompt(changes []transcript.Change, selected []rulespec.Rule, metaPoli
 		// risk (e.g. proxy/server config), so the local judge must surface them for
 		// the developer to decide, not auto-apply like the rest.
 		if !r.AutoFixAllowed() {
-			b.WriteString("→ SUGGEST-ONLY: do NOT auto-apply this fix — report the issue + fix and let the developer decide (high-regression-risk change, e.g. server/proxy config).\n")
+			b.WriteString("→ SUGGEST-ONLY: do NOT auto-apply this fix. Report the issue + fix and let the developer decide (high-regression-risk change, e.g. server/proxy config).\n")
 		}
 		b.WriteString("\n")
 	}
@@ -88,7 +88,7 @@ func BuildPrompt(changes []transcript.Change, selected []rulespec.Rule, metaPoli
 	b.WriteString("## Output contract\n\n")
 	b.WriteString("- Flag violations with file:line + the concrete fix above.\n")
 	b.WriteString("- If no violations: report exactly **CLEAN**.\n")
-	b.WriteString("- Apply every fix without asking, EXCEPT rules marked SUGGEST-ONLY — for those, report the issue + fix and let the developer decide; do not change the code.\n")
+	b.WriteString("- Apply every fix without asking, EXCEPT rules marked SUGGEST-ONLY. For those, report the issue + fix and let the developer decide; do not change the code.\n")
 	b.WriteString("- Summarize what changed.\n")
 
 	return b.String()
@@ -133,23 +133,28 @@ func BuildFindingsPrompt(findings []wire.Finding) string {
 	var b strings.Builder
 	switch {
 	case len(introduced) > 0:
-		b.WriteString("🔒 LeoPrevent: security review — fix before finishing this turn. Apply each directly, don't ask.\n\n")
+		b.WriteString("🔒 LeoPrevent: security review: fix before finishing this turn. Apply each directly, don't ask.\n\n")
 		writeFindingGroups(&b, introduced)
 	case len(suggestOnly) > 0 || len(preexisting) > 0:
 		// Nothing to force-fix, but there are items to surface. Keep the marker prefix.
-		b.WriteString("🔒 LeoPrevent: security review — nothing to auto-fix; review the items below.\n\n")
+		b.WriteString("🔒 LeoPrevent: security review: nothing to auto-fix; review the items below.\n\n")
 	default:
 		// Genuinely clean; keep the Codex re-wake marker prefix either way.
-		b.WriteString("🔒 LeoPrevent: security review — your change itself is clean.\n\n")
+		b.WriteString("🔒 LeoPrevent: security review: your change itself is clean.\n\n")
 	}
 	if len(suggestOnly) > 0 {
-		b.WriteString("These need a fix, but LeoPrevent does NOT auto-apply it — the fix carries high regression risk (e.g. reverse-proxy / web-server config). Review each, apply manually only if correct, and confirm with the developer before changing shared config:\n\n")
+		b.WriteString("These need a fix, but LeoPrevent does NOT auto-apply it, because the fix carries high regression risk (e.g. reverse-proxy / web-server config). Review each, apply manually only if correct, and confirm with the developer before changing shared config:\n\n")
 		writeFindingGroups(&b, suggestOnly)
 	}
 	if len(preexisting) > 0 {
-		b.WriteString("Pre-existing issues NOT introduced by your change this turn. Do NOT edit these pre-existing lines. If code YOU added this turn routes through one of them, make your added code safe without touching the old lines (e.g. wire it to a safe sibling helper) — but only when that stays compatible with existing data and flows; when unsure, leave it. Once you're done, tell the developer these exist and ask whether they want them fixed:\n\n")
+		b.WriteString("Pre-existing issues NOT introduced by your change this turn. Do NOT edit these pre-existing lines. If code YOU added this turn routes through one of them, make your added code safe without touching the old lines (e.g. wire it to a safe sibling helper), but only when that stays compatible with existing data and flows; when unsure, leave it. Once you're done, tell the developer these exist and ask whether they want them fixed:\n\n")
 		writeFindingGroups(&b, preexisting)
 	}
+	// The prompt deliberately ends with the findings. It used to append AssumptionsAsk
+	// here; that is removed (LEO-113) and must not come back without a decision, because
+	// the session is the only channel a Stop hook has in either direction, so the ask and
+	// the agent's answer both render on the developer's screen. See AssumptionsAsk for
+	// what that cost, and for the parser that is still ready if it is re-enabled.
 	return b.String()
 }
 
@@ -175,7 +180,7 @@ func writeFindingGroups(b *strings.Builder, findings []wire.Finding) {
 		for _, f := range byRule[label] {
 			loc := stripTicks(strings.TrimSpace(f.Location))
 			if issue := stripTicks(strings.TrimSpace(f.Issue)); issue != "" {
-				fmt.Fprintf(b, "• %s — %s\n", loc, issue)
+				fmt.Fprintf(b, "• %s: %s\n", loc, issue)
 			} else {
 				fmt.Fprintf(b, "• %s\n", loc)
 			}
@@ -183,7 +188,7 @@ func writeFindingGroups(b *strings.Builder, findings []wire.Finding) {
 			// into this pre-existing sink. Make the NEW call site safe — still don't
 			// edit the old line.
 			if f.NewlyReached {
-				b.WriteString("  ⚠️ your code added this turn routes into this existing vulnerable helper — make your NEW call site safe (don't edit the old line)\n")
+				b.WriteString("  ⚠️ your code added this turn routes into this existing vulnerable helper. Make your NEW call site safe (don't edit the old line)\n")
 			}
 			if fix := stripTicks(strings.TrimSpace(f.Fix)); fix != "" {
 				fmt.Fprintf(b, "  → fix: %s\n", fix)
@@ -295,14 +300,14 @@ func ReviewContextMessage(fileCount int, findings []wire.Finding, forceFixed int
 	case len(findings) == 0:
 		// Shouldn't reach here (an empty prompt doesn't block), but never claim a
 		// finding we can't count.
-		tail = " — see the review notes below."
+		tail = ". See the review notes below."
 	case forceFixed == 0:
 		tail = " and raised " + count(len(findings), "finding") +
-			" for you to review — not auto-fixed, so they need your decision."
+			" for you to review. They are not auto-fixed, so they need your decision."
 	case forceFixed == len(findings):
 		tail = " and fixed " + count(forceFixed, "finding") + " below."
 	default:
-		tail = " — fixed " + count(forceFixed, "finding") + ", and surfaced " +
+		tail = ", fixed " + count(forceFixed, "finding") + " and surfaced " +
 			strconv.Itoa(len(findings)-forceFixed) + " more for you to review."
 	}
 
@@ -341,7 +346,7 @@ func ForceFixedCount(findings []wire.Finding) int {
 // baseline (transcript-fallback path): leoprevent then sees only the lines the
 // agent wrote via edit tools — not Bash writes, and with no full-file context —
 // so the review is weaker. Customer-facing and deliberately non-technical.
-const GitlessWarning = "⚠️ no git repo here — LeoPrevent sees less of your code (run git init for full coverage)"
+const GitlessWarning = "⚠️ no git repo here, so LeoPrevent sees less of your code (run git init for full coverage)"
 
 // Banner is the short, neutral console notice. Selection is not detection: it
 // names how many files are under review, never claims a violation was found —

@@ -42,6 +42,15 @@ type ChangedFile struct {
 type ContextFile struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
+	// Lines are the 1-based real file line numbers of Content's lines, present when
+	// Content is a SLICE of the file rather than the whole of it — the client sends
+	// only the spans the changed code can reach (selective function pulling), which
+	// is most of the imported-context payload saved. Same shape and contract as
+	// ChangedFile.AddedLines: index-aligned with Content's lines, so the server
+	// numbers the excerpt truthfully and the gaps between numbers read as elided
+	// code. Absent (nil) means Content IS the whole file from line 1 — the case for
+	// an older client and for any file the slicer could not safely reduce.
+	Lines []int `json:"lines,omitempty"`
 }
 
 // ReviewRequest is the POST /review body (cloud tier). It carries only the
@@ -125,8 +134,19 @@ type TurnMeta struct {
 	// because the causes have opposite fixes: no baseline recorded (the UserPromptSubmit
 	// hook never ran) vs a baseline that existed and git then lost (the dangling stash
 	// commit was garbage-collected).
-	GitBaseline  bool   `json:"git_baseline,omitempty"`
-	BaselineSkip string `json:"baseline_skip,omitempty"`
+	GitBaseline bool `json:"git_baseline,omitempty"`
+	// BaselineHead is the commit HEAD pointed at when the turn STARTED, and
+	// ImportedDropped counts files excluded from review because their content was
+	// already published before it — brought into the tree by a mid-turn checkout,
+	// pull, merge or rebase rather than written by the agent (vcs.BaselineInfo).
+	//
+	// Metadata, and worth the two fields: that subtraction is the only step that
+	// REMOVES code from review, so an over-subtraction is silent by nature — the turn
+	// just looks quieter. The client log names the dropped paths on the developer's
+	// own machine; these make the same thing answerable fleet-wide.
+	BaselineHead    string `json:"baseline_head,omitempty"`
+	ImportedDropped int    `json:"imported_dropped,omitempty"`
+	BaselineSkip    string `json:"baseline_skip,omitempty"`
 	// AgentNote is the coding agent's OWN end-of-turn message (last_assistant_message at
 	// the FIRST Stop, before any re-wake) — what the agent itself said about the code it
 	// wrote, including issues it flagged but chose not to fix. BODY (the agent's text).
@@ -308,6 +328,37 @@ type OutcomeRequest struct {
 	// agent PUSHES BACK, this is the false-positive tuning signal ("this URL is a
 	// hardcoded constant…"). A body.
 	AgentResponse string `json:"agent_response,omitempty"`
+
+	// Assumptions are the things the agent says it treated as true WITHOUT verifying
+	// this turn ("the caller is already authenticated", "this input is validated
+	// upstream"), parsed back out of AgentResponse deterministically, with no model
+	// call (review.ParseAssumptions).
+	//
+	// ⚠️ ALWAYS EMPTY SINCE LEO-113 — nothing asks for them any more. The re-wake used
+	// to carry review.AssumptionsAsk; it does not, because the ask and the agent's
+	// answer both render in the developer's session (the reasoning is on
+	// review.AssumptionsAsk). The field, the parser and the server-side ingest are kept
+	// so re-enabling is one line, and because dropping a field from the wire would break
+	// every already-recorded event that carries one. Don't remove it, and don't read a
+	// present-tense "the prompt asks for them" back into it.
+	//
+	// COLLECTION ONLY even when it was populated. Nothing gates on these and no surface
+	// renders them. Bodies (model-authored prose), so they are logged only when body
+	// logging is on.
+	//
+	// They ride /outcome rather than /review because that is where the ANSWER landed:
+	// the ask went out on the block, and the agent replied during the re-wake, which the
+	// client reads at the FINAL Stop. So they were captured only on a turn that blocked,
+	// which was the whole population that got asked.
+	Assumptions []string `json:"assumptions,omitempty"`
+	// AssumptionsReported distinguishes "the agent answered and had none" (true, empty
+	// Assumptions) from "the agent never answered" (false) — a slice with omitempty
+	// cannot tell those apart, and they are different facts: the first is a clean empty
+	// result, the second is an agent that ignored the ask, was truncated, or ran on a
+	// surface with no transcript to read the reply back from (copilot). Same shape and
+	// reason as ReviewEvent.AckClassified. Since LEO-113 it is uniformly false, which is
+	// the honest reading: nothing was asked, so nothing was answered.
+	AssumptionsReported bool `json:"assumptions_reported,omitempty"`
 
 	// Full-turn agent token usage + wall-clock, captured at the FINAL Stop so it
 	// SPANS the re-wake fix leoprevent induced. The /review Meta was captured at the

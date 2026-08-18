@@ -293,16 +293,29 @@ func (h Cloud) ShipOutcome(p outcome.Pending, after []transcript.Change, agentRe
 	if agentModel == "" {
 		agentModel = p.AgentModel
 	}
+	// If the reply carries an assumptions block, lift it into its own field. Nothing
+	// ASKS for one since LEO-113 (review.AssumptionsAsk is no longer appended to the
+	// re-wake, because the ask and the answer both render in the developer's session),
+	// so in practice this yields reported=false on every turn. The call stays because it
+	// is what makes re-enabling the ask a one-line change, and because an agent that
+	// volunteers the block should still be read rather than ignored. Parsed here rather
+	// than in the engine so BOTH callers get it — the Stop hook and the headless `exec`
+	// loop (clirun), which share this method and nothing above it. agentResponse itself
+	// is shipped VERBATIM: it is the record of what the agent said, and editing a block
+	// out of it to avoid a duplicate would make that record less faithful.
+	assumptions, reported := review.ParseAssumptions(agentResponse)
 	resp, err := h.client.Outcome(wire.OutcomeRequest{
-		ReviewID:      p.ReviewID,
-		Repo:          p.Repo,
-		Developer:     p.Developer,
-		Agent:         meta.Agent,
-		AgentModel:    agentModel,
-		Before:        p.Before,
-		After:         afterFiles,
-		Findings:      p.Findings,
-		AgentResponse: agentResponse,
+		ReviewID:            p.ReviewID,
+		Repo:                p.Repo,
+		Developer:           p.Developer,
+		Agent:               meta.Agent,
+		AgentModel:          agentModel,
+		Before:              p.Before,
+		After:               afterFiles,
+		Findings:            p.Findings,
+		AgentResponse:       agentResponse,
+		Assumptions:         assumptions,
+		AssumptionsReported: reported,
 		// FULL-TURN agent token usage + wall-clock (final-Stop capture, spans the re-wake).
 		InputTokens:         meta.InputTokens,
 		CacheCreationTokens: meta.CacheCreationTokens,
