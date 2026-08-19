@@ -212,3 +212,36 @@ func TestRejectsBad(t *testing.T) {
 		t.Error("bad tier must error")
 	}
 }
+
+func TestDashboardURLFromFileAndEnv(t *testing.T) {
+	c, err := resolve(writeJSON(t, `{"server_url":"https://x","dashboard_url":"https://prevent.example.com"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DashboardURL != "https://prevent.example.com" {
+		t.Errorf("DashboardURL = %q", c.DashboardURL)
+	}
+
+	t.Setenv(EnvDashboardURL, "https://staging.example.com")
+	c, err = resolve(writeJSON(t, `{"server_url":"https://x","dashboard_url":"https://prevent.example.com"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DashboardURL != "https://staging.example.com" {
+		t.Errorf("env should win: %q", c.DashboardURL)
+	}
+}
+
+// A missing dashboard_url must NOT fail config loading. It is read by the `mcp` subcommand
+// alone, so failing here would take the REVIEW LOOP down on every install that predates the
+// field — the hook fails open, so the symptom would be silent unreviewed turns rather than an
+// error anyone sees. `mcp` refuses on its own, where the developer is watching a tool start.
+func TestMissingDashboardURLIsNotAnError(t *testing.T) {
+	c, err := resolve(writeJSON(t, `{"server_url":"https://x","tier":"cloud"}`))
+	if err != nil {
+		t.Fatalf("a config without dashboard_url must still load: %v", err)
+	}
+	if c.DashboardURL != "" {
+		t.Errorf("DashboardURL = %q, want empty", c.DashboardURL)
+	}
+}

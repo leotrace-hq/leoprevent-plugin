@@ -282,7 +282,7 @@ func vendoredReason(p string) (isVendored, byEnry bool) {
 	q := strings.ReplaceAll(p, `\`, "/")
 	// Ambiguous build-output segments are trusted only on a relative path — an absolute
 	// path means the gitless fallback, where an ancestor dir would spuriously match.
-	rel := !filepath.IsAbs(p)
+	rel := !absAnyPlatform(q)
 	for _, seg := range strings.Split(q, "/") {
 		if vendoredSegments[seg] || strings.HasPrefix(seg, "cmake-build") {
 			return true, false
@@ -304,6 +304,28 @@ func vendoredReason(p string) (isVendored, byEnry bool) {
 		return false, false // CI config: review it despite Linguist vendoring it
 	}
 	return true, true
+}
+
+// absAnyPlatform reports whether a separator-normalized path is absolute on ANY
+// platform, not merely on the one this binary was built for. filepath.IsAbs answers
+// the host's question: on Windows it calls /home/me/out/proj/app.py RELATIVE (no drive
+// letter), so the ambiguous `out` ancestor matched and the whole project was dropped
+// UNREVIEWED — the exact review bypass the relative-only rule exists to prevent, just
+// on the other OS. A path shape this cannot recognise falls through to filepath.IsAbs,
+// and an unrecognised shape reads as relative, so the residual risk is unchanged.
+// Erring toward absolute errs toward reviewing.
+func absAnyPlatform(q string) bool {
+	if strings.HasPrefix(q, "/") { // POSIX, and a normalized UNC //server/share
+		return true
+	}
+	if len(q) >= 2 && q[1] == ':' && isDriveLetter(q[0]) { // C:/… and drive-relative C:…
+		return true
+	}
+	return filepath.IsAbs(q)
+}
+
+func isDriveLetter(b byte) bool {
+	return ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z')
 }
 
 // secretBasenames are credential/secret files whose CONTENT is secrets, not code —

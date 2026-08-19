@@ -2,7 +2,6 @@ package vcs
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -124,12 +123,11 @@ func TestAddedLinesAlignWithAddedTextRealRepo(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "m.py"), []byte(base), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command("git", "-C", dir, "add", "m.py").CombinedOutput(); err != nil {
-		t.Fatalf("git add: %v %s", err, out)
-	}
-	if out, err := exec.Command("git", "-C", dir, "commit", "-m", "base").CombinedOutput(); err != nil {
-		t.Fatalf("git commit: %v %s", err, out)
-	}
+	// Through gitRun, which supplies GIT_AUTHOR_*/GIT_COMMITTER_*: a bare CI runner has no
+	// global git identity, so a direct commit here aborts with "empty ident name" and this
+	// test alone failed on every OS while the rest of the package passed.
+	gitRun(t, dir, "add", "m.py")
+	gitRun(t, dir, "commit", "-q", "-m", "base")
 	if err := CaptureBaseline(dir, session); err != nil {
 		t.Fatalf("CaptureBaseline: %v", err)
 	}

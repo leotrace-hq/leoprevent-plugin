@@ -1,4 +1,5 @@
 {
   "server_url": "https://api.leotrace.io",
+  "dashboard_url": "https://prevent.leotrace.io",
   "tier": "cloud"
 }

@@ -171,6 +171,22 @@ New-Item -ItemType Directory -Force "$env:AppData\leoprevent" | Out-Null
 '{"license_key":"lp_live_your_key_here"}' | Out-File -Encoding ascii "$env:AppData\leoprevent\license.json"
 ```
 
+## Ask your agent about your own results (Claude Code)
+
+Once the plugin is installed and your key is set, LeoPrevent also gives Claude Code a small set of
+**read-only tools**, so you can ask about your security review results without opening the dashboard:
+
+- *"How am I doing on security reviews this month?"*
+- *"What has LeoPrevent flagged in this repo lately?"*
+- *"Which rule keeps firing on me?"*
+
+There is nothing to install or configure. The tools appear automatically with the plugin, use the
+same license key, and are read-only: they report what has already happened and never review, judge,
+or change any code. That is still the Stop hook's job, and it runs whether or not anything asks.
+
+By default a tool reports **your own** turns. Team-wide figures need a dashboard admin, and are
+refused otherwise. Codex and GitHub Copilot are not covered yet.
+
 ## Good to know
 
 - After installing, **open a new session** and work in a **git repo**, which is what the review runs against.
@@ -180,6 +196,7 @@ New-Item -ItemType Directory -Force "$env:AppData\leoprevent" | Out-Null
 - If the server is unreachable or your key isn't set, the review is simply skipped. It never blocks you.
 - **Windows:** works with Claude Code (the plugin ships a Windows binary; PowerShell, cmd, and Git
   Bash are all covered). Codex on Windows is not supported yet.
+- The read-only tools above talk to the dashboard, not to the review server, and send no code.
 
 ## Verify the binary matches this source
 

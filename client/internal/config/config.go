@@ -43,6 +43,11 @@ const (
 	EnvTier           = "LEOPREVENT_TIER"
 	EnvLicenseKey     = "LEOPREVENT_LICENSE_KEY"
 	EnvResolveImports = "LEOPREVENT_RESOLVE_IMPORTS" // 0|false|off|no disables cross-file context
+	// EnvDashboardURL overrides the customer dashboard origin the `mcp` subcommand reads
+	// stats from. A SEPARATE deployment from the review server — the dashboards read Mongo
+	// directly and never call the Go server (CLAUDE.md), so the two are different hosts and
+	// one URL could not serve both.
+	EnvDashboardURL = "LEOPREVENT_DASHBOARD_URL"
 	// EnvEnrollToken is the ORG-scoped enrolment token an enterprise admin pushes through managed
 	// settings' `env` block. It is NOT a license key and cannot review anything: the server
 	// exchanges it for this machine's own per-user key (see client/internal/enroll). It rides the
@@ -168,6 +173,15 @@ type Config struct {
 	// a deployment that hands developers their keys directly never sets it, and a missing one just
 	// means no enrolment is attempted. Never a review credential.
 	EnrollToken string `json:"enroll_token,omitempty"`
+	// DashboardURL is the customer dashboard origin the `mcp` subcommand reads stats from
+	// (LEO-88). OPTIONAL and unused by every other path — the review loop never touches it,
+	// so a config without it reviews exactly as before and only `leoprevent mcp` refuses.
+	//
+	// ⚠️ THERE IS NO COMPILED-IN DEFAULT, deliberately, and the same reasoning as `--agent`:
+	// a fallback origin baked into the binary would send one deployment's developers to
+	// another deployment's dashboard, silently and with a valid-looking answer. An on-prem
+	// install sets it in leoprevent.json beside server_url; the release generates it.
+	DashboardURL string `json:"dashboard_url,omitempty"`
 }
 
 // ResolveImportsEnabled reports whether the cloud tier should resolve cross-file
@@ -232,6 +246,9 @@ func resolve(path string) (*Config, error) {
 	}
 	if v := os.Getenv(EnvEnrollToken); v != "" {
 		c.EnrollToken = v
+	}
+	if v := os.Getenv(EnvDashboardURL); v != "" {
+		c.DashboardURL = v
 	}
 	if v := os.Getenv(EnvResolveImports); v != "" {
 		enabled := !isFalsey(v)

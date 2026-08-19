@@ -3,6 +3,7 @@ package review
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,27 +13,135 @@ import (
 func TestFixStillVulnerableNotice(t *testing.T) {
 	msg := FixStillVulnerableNotice([]wire.Finding{
 		{Rule: "ssrf", Name: "Server-Side Request Forgery", Location: "a.py:1", Issue: "blocklist still bypassable via DNS rebind", Fix: "resolve to IP and reject private ranges"},
-		{Rule: "no-input-validation", Location: "b.py:2"}, // no Name → falls back to rule ID
+		{Rule: "no-input-validation", Location: "b.py:2"}, // no Name -> falls back to rule ID
 	})
-	for _, want := range []string{"still vulnerable", "Server-Side Request Forgery", "a.py:1", "no-input-validation", "b.py:2"} {
+	for _, want := range []string{"still vulnerable", "2 findings", "Server-Side Request Forgery", "a.py:1", "no-input-validation", "b.py:2"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("notice missing %q: %s", want, msg)
 		}
 	}
-	// The WHY (judge's issue) and the suggested fix must ride the notice — it's the
-	// whole point: tell the agent why its fix is still vulnerable, not just where.
-	for _, want := range []string{"blocklist still bypassable via DNS rebind", "resolve to IP and reject private ranges"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("notice missing the judge's reason/fix %q: %s", want, msg)
+}
+
+// The notice must NOT carry the judge's prose when there is more than one finding
+// (LEO-120). Claude Code prefixes EVERY line of a systemMessage with "Stop says: ", so
+// the old version's per-finding issue + fix rendered ~40 labelled lines and was unusable.
+// This test fails against that code, on both the fix prose and the line count.
+func TestFixStillVulnerableNoticeStaysShortWithSeveralFindings(t *testing.T) {
+	msg := FixStillVulnerableNotice([]wire.Finding{
+		{Rule: "nosql-injection", Name: "NoSQL Injection", Location: "docstore.js:28",
+			Issue: "req.body.filter is passed directly as the MongoDB query filter",
+			Fix:   "Validate that req.body.filter is a plain object whose values are all scalar types"},
+		{Rule: "nosql-injection", Name: "NoSQL Injection", Location: "docstore.js:35",
+			Issue: "req.body.email is passed directly to users.findOne()",
+			Fix:   "assert that both req.body.email and req.body.password are strings"},
+		{Rule: "xxe", Name: "XML External Entities", Location: "docstore.js:61",
+			Issue: "parseXml is called with dtdload:true",
+			Fix:   "Remove dtdload:true and replaceEntities:true from the options object"},
+	})
+	// The FIX prose never appears: the agent already had it verbatim in the re-wake, and
+	// half a fix recipe is worse than none.
+	for _, unwanted := range []string{"Validate that", "assert that", "Remove dtdload"} {
+		if strings.Contains(msg, unwanted) {
+			t.Errorf("notice must not carry the fix prose (%q): %s", unwanted, msg)
 		}
 	}
-	// More than the cap → truncation marker, not a wall of findings.
-	many := make([]wire.Finding, 5)
-	for i := range many {
-		many[i] = wire.Finding{Rule: "r", Location: "f"}
+	// Nor the issue prose: with several findings there is no room to explain each.
+	if strings.Contains(msg, "MongoDB query filter") {
+		t.Errorf("notice must not carry per-finding issue prose with >1 finding: %s", msg)
 	}
-	if !strings.Contains(FixStillVulnerableNotice(many), "…") {
-		t.Error("over-cap notice should end with an ellipsis")
+	// Two locations of ONE rule read as one line, so three findings are two rule lines
+	// plus the headline and the non-blocking footer.
+	if got, want := strings.Count(msg, "\n")+1, 4; got != want {
+		t.Errorf("notice is %d lines, want %d (every line is prefixed with the hook label):\n%s", got, want, msg)
+	}
+	if !strings.Contains(msg, "NoSQL Injection: docstore.js:28, docstore.js:35") {
+		t.Errorf("locations of one rule should be grouped onto its line: %s", msg)
+	}
+}
+
+// A SINGLE finding is the one case with room to say why, so it says why: the ticket's
+// "chevron to read more" in a surface that has no chevron. The issue only, never the fix.
+func TestFixStillVulnerableNoticeExplainsASingleFinding(t *testing.T) {
+	msg := FixStillVulnerableNotice([]wire.Finding{{
+		Rule: "ssrf", Name: "Server-Side Request Forgery", Location: "fetch.py:12",
+		Issue: "the `blocklist` is still bypassable via DNS rebinding. A resolved address is never re-checked",
+		Fix:   "resolve the hostname to an IP and reject private ranges",
+	}})
+	if !strings.Contains(msg, "1 finding") || strings.Contains(msg, "1 findings") {
+		t.Errorf("headline should read \"1 finding\": %s", msg)
+	}
+	if !strings.Contains(msg, "why: the blocklist is still bypassable via DNS rebinding.") {
+		t.Errorf("single finding should carry the first sentence of the issue, backticks stripped: %s", msg)
+	}
+	// First sentence ONLY, and still no fix recipe.
+	if strings.Contains(msg, "never re-checked") {
+		t.Errorf("only the FIRST sentence of the issue belongs in the notice: %s", msg)
+	}
+	if strings.Contains(msg, "reject private ranges") {
+		t.Errorf("the fix recipe must stay out of the notice: %s", msg)
+	}
+
+	// Prose with no sentence end falls back to a hard cut, which must land on a word
+	// boundary: the judge writes JSON fragments and expressions, and a dangling
+	// half-token on a one-line alert reads as a rendering bug. The cap falls inside
+	// "unvalidated" here, so the old rune-cut would have emitted "unvalid…".
+	issue := strings.Repeat("the handler forwards it on, ", 5) + "then queries with an unvalidated operator object"
+	long := FixStillVulnerableNotice([]wire.Finding{{
+		Rule: "nosql-injection", Name: "NoSQL Injection", Location: "d.js:28", Issue: issue,
+	}})
+	cut, ok := lineAfter(long, "  why: ")
+	if !ok || !strings.HasSuffix(cut, "…") {
+		t.Fatalf("expected a truncated why line, got %q", cut)
+	}
+	// What survives must be a prefix of the issue that stops where a word ends.
+	kept := strings.TrimSuffix(cut, "…")
+	rest, isPrefix := strings.CutPrefix(issue, kept)
+	if !isPrefix {
+		t.Fatalf("truncated why is not a prefix of the issue: %q", kept)
+	}
+	if rest != "" && !strings.HasPrefix(rest, " ") {
+		t.Errorf("truncation split a token: %q ends mid-word (next: %q)", kept, rest[:min(12, len(rest))])
+	}
+}
+
+// lineAfter returns the remainder of the line introduced by prefix.
+func lineAfter(msg, prefix string) (string, bool) {
+	for _, line := range strings.Split(msg, "\n") {
+		if after, ok := strings.CutPrefix(line, prefix); ok {
+			return after, true
+		}
+	}
+	return "", false
+}
+
+// However many findings arrive, the notice stays a handful of lines: the rule groups are
+// capped, each group's locations are capped, and BOTH remainders are stated as a COUNT.
+// A bare ellipsis (what the old code emitted) tells the developer nothing about how much
+// was hidden.
+func TestFixStillVulnerableNoticeBoundsEverything(t *testing.T) {
+	var many []wire.Finding
+	for i := 0; i < 20; i++ {
+		many = append(many, wire.Finding{Rule: "r" + strconv.Itoa(i), Name: "Rule " + strconv.Itoa(i), Location: "f.go:" + strconv.Itoa(i)})
+	}
+	msg := FixStillVulnerableNotice(many)
+	if got := strings.Count(msg, "\n") + 1; got > 8 {
+		t.Errorf("notice is %d lines for 20 findings, want a handful:\n%s", got, msg)
+	}
+	if !strings.Contains(msg, "16 more rules") {
+		t.Errorf("the hidden remainder must be stated as a count, not an ellipsis: %s", msg)
+	}
+
+	// Many locations under ONE rule: the line names a few and counts the rest.
+	same := make([]wire.Finding, 9)
+	for i := range same {
+		same[i] = wire.Finding{Rule: "xss", Name: "Cross-Site Scripting", Location: "t.js:" + strconv.Itoa(i)}
+	}
+	msg = FixStillVulnerableNotice(same)
+	if !strings.Contains(msg, "(+6 more)") {
+		t.Errorf("over-cap locations should be counted on the rule line: %s", msg)
+	}
+	if got, want := strings.Count(msg, "\n")+1, 3; got != want {
+		t.Errorf("one rule over many locations is %d lines, want %d:\n%s", got, want, msg)
 	}
 }
 

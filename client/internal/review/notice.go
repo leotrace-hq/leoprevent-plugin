@@ -2,6 +2,7 @@ package review
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/leotrace-hq/leoprevent-plugin/wire"
@@ -97,41 +98,106 @@ func SkipNotice(reason SkipReason) string {
 // /outcome re-verify: after LeoPrevent blocked and the agent fixed, the re-judge found
 // the agent's introduced fix is STILL vulnerable. Shown as a NON-BLOCKING Stop notice
 // (the turn still yields) so the dev learns it in-turn — before closing the agent —
-// instead of shipping a silently-bad fix. Each still-firing finding is listed by
-// location + rule name AND the judge's reason (issue) + the suggested fix, so the
-// developer/agent learns WHY it's still vulnerable, not just where (capped at `max`
-// findings to keep the notice bounded). The issue/fix prose comes from the server
+// instead of shipping a silently-bad fix.
+//
+// ⚠️ IT IS AN ALERT, NOT THE RECORD, AND THE LINE COUNT IS THE READABILITY COST.
+// Claude Code renders a systemMessage by prefixing EVERY line with "Stop says: " and
+// wrapping it in a narrow column, so N lines of judge prose become N labelled lines of
+// chrome. It used to carry each finding's full issue AND fix verbatim: on a real turn
+// with three still-firing findings (LEO-120) that rendered as ~40 prefixed lines,
+// followed by a bare "• …" that didn't even say how many more there were. So the notice
+// now states WHAT and WHERE only:
+//
+//   - grouped by rule NAME with the locations joined, the same shape (and the same
+//     reason) as writeFindingGroups — several locations of one issue read as one line;
+//   - the FIX prose is dropped entirely. The agent already had it verbatim in the
+//     re-wake and botched it, so repeating it here helps nobody, and a shortened fix
+//     recipe is worse than none: a developer who applies half of one has shipped an
+//     incomplete guard believing they followed the advice;
+//   - the WHY rides along ONLY when there is exactly ONE finding (first sentence of the
+//     judge's issue). That is the ticket's "chevron to read more" in a surface that has
+//     no chevron: expand when there is one thing, collapse when there are many. It is
+//     the issue, never the fix, because an under-explained finding merely under-informs.
+//
+// Every part is bounded (maxGroups rule lines, maxLocs locations each, the remainder
+// stated as a count) so the whole notice stays a handful of lines whatever it is handed.
+// The full issue/fix prose still egresses on the /outcome response and is recorded on
+// the outcome event; the dashboards remain the record. The prose comes from the server
 // already run through the rule-text exfil hardening (scrub/redact/cap).
 func FixStillVulnerableNotice(findings []wire.Finding) string {
-	const max = 3
+	const (
+		maxGroups = 4 // rule lines before the remainder count
+		maxLocs   = 3 // locations named per rule before "+N more"
+	)
+
 	var b strings.Builder
-	b.WriteString("⚠️ LeoPrevent: your fix is still vulnerable. The re-check after your change still flags:")
-	for i, f := range findings {
-		if i == max {
+	b.WriteString("⚠️ LeoPrevent: your fix is still vulnerable. The re-check after your change still flags " +
+		count(len(findings), "finding") + ":")
+
+	groups, order := groupLocations(findings)
+	for i, label := range order {
+		if i == maxGroups {
+			b.WriteString("\n• …and " + count(len(order)-maxGroups, "more rule") + " flagged")
 			break
 		}
-		name := f.Name
-		if name == "" {
-			name = f.Rule
-		}
-		b.WriteString("\n• ")
-		if f.Location != "" {
-			b.WriteString(f.Location + " (" + name + ")")
-		} else {
-			b.WriteString(name)
-		}
-		if f.Issue != "" {
-			b.WriteString(": " + f.Issue)
-		}
-		if f.Fix != "" {
-			b.WriteString(". Fix: " + f.Fix)
+		b.WriteString("\n• " + label)
+		switch locs := groups[label]; {
+		case len(locs) > maxLocs:
+			b.WriteString(": " + strings.Join(locs[:maxLocs], ", ") +
+				" (+" + strconv.Itoa(len(locs)-maxLocs) + " more)")
+		case len(locs) > 0:
+			b.WriteString(": " + strings.Join(locs, ", "))
 		}
 	}
-	if len(findings) > max {
-		b.WriteString("\n• …")
+
+	// One finding: there is room to say why, so say it (first sentence only).
+	if len(findings) == 1 {
+		if why := onWordBoundary(firstSentence(stripTicks(strings.TrimSpace(findings[0].Issue)))); why != "" {
+			b.WriteString("\n  why: " + why)
+		}
 	}
+
 	b.WriteString("\nThis is a non-blocking warning; please review before you ship.")
 	return b.String()
+}
+
+// onWordBoundary pulls a truncation back to the last whole word. firstSentence falls
+// back to a hard rune cut when the prose has no sentence end, which lands mid-token on
+// exactly the kind of text the judge writes (a JSON fragment, an expression) — the
+// notice is one glanceable line, so a dangling half-token reads as a rendering bug.
+func onWordBoundary(s string) string {
+	if !strings.HasSuffix(s, "…") {
+		return s
+	}
+	head := strings.TrimSuffix(s, "…")
+	if i := strings.LastIndex(head, " "); i > 0 {
+		return strings.TrimRight(head[:i], " ,;:") + "…"
+	}
+	return s
+}
+
+// groupLocations buckets findings by rule NAME (human name, falling back to the kebab
+// ID only when the server sent none) and returns each bucket's locations plus the
+// first-seen rule order, so the notice is deterministic rather than map-ordered. A
+// finding with no location contributes nothing to its bucket's list — the rule name
+// alone is still worth naming.
+func groupLocations(findings []wire.Finding) (map[string][]string, []string) {
+	groups := map[string][]string{}
+	var order []string
+	for _, f := range findings {
+		label := stripTicks(strings.TrimSpace(f.Name))
+		if label == "" {
+			label = stripTicks(strings.TrimSpace(f.Rule))
+		}
+		if _, seen := groups[label]; !seen {
+			order = append(order, label)
+			groups[label] = nil
+		}
+		if loc := stripTicks(strings.TrimSpace(f.Location)); loc != "" {
+			groups[label] = append(groups[label], loc)
+		}
+	}
+	return groups, order
 }
 
 // notice is the NON-BLOCKING Stop-hook output: a systemMessage with NO decision

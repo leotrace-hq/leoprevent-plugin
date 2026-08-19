@@ -10,6 +10,10 @@
 //	leoprevent --agent=claude
 //	leoprevent --agent=codex
 //
+// Three explicit CLI actions sit in front of the hook path: `set-license` (store the
+// customer key), `exec` (drive a headless agent through the review loop) and `mcp` (serve
+// the read tools over the Model Context Protocol on stdio — LEO-88).
+//
 // The client ships NO rules: leoprevent.json at the plugin root (one dir above the
 // binary) sets the server URL and tier (cloud → /review, local → /rules), env-
 // overridable via $LEOPREVENT_SERVER_URL/$LEOPREVENT_TIER. Reviewing therefore
@@ -74,6 +78,14 @@ func main() {
 	// re-wake JSON — so dispatch before run().
 	if len(os.Args) > 1 && os.Args[1] == "exec" {
 		os.Exit(runExec(os.Args[2:]))
+	}
+
+	// `mcp` serves the READ tools over the Model Context Protocol on stdio (LEO-88). It is
+	// the one LONG-LIVED path in this binary — the agent starts it from the plugin's
+	// .mcp.json and keeps it for the session — and stdout is the JSON-RPC transport, not the
+	// re-wake channel, so it must never reach run() below.
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		os.Exit(runMCP(os.Args[2:]))
 	}
 
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
