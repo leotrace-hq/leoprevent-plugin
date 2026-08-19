@@ -1,4 +1,5 @@
 {
   "server_url": "https://leoprevent-dev.fly.dev",
+  "dashboard_url": "https://leoprevent-customer-dev.vercel.app",
   "tier": "cloud"
 }

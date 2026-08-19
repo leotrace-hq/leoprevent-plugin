@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "leoprevent": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/leoprevent-plugin",
+      "args": ["mcp"]
+    }
+  }
+}
