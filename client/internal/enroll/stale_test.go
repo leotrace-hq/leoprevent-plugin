@@ -13,8 +13,24 @@ import (
 // MarkStaleKey resolves the current key through config.Load.
 func isolate(t *testing.T) {
 	t.Helper()
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempDir(t)
 	t.Cleanup(config.SetUserConfigDirForTest(t.TempDir()))
+}
+
+// isolateTempDir redirects os.TempDir for one test.
+//
+// ⚠️ TMPDIR ALONE IS POSIX-ONLY: os.TempDir reads TMPDIR on Unix but TMP, then TEMP, on
+// Windows. So every test in this package shared the machine's REAL temp dir there, one
+// test's markers and cooldown stamp were still on disk for the next, and the two tests
+// that assert on an EMPTY scratch dir failed — reading as a Windows path bug in the code
+// under test rather than as cross-contamination in the harness. Set all three: the
+// variable that is ignored on a platform costs nothing.
+func isolateTempDir(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(key, dir)
+	}
 }
 
 // TestTheMarkerIsKeyedOnTheCredentialNotTheSession is the regression test for the version of

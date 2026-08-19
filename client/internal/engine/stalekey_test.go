@@ -42,6 +42,23 @@ func withKey(t *testing.T, key string) {
 	}
 }
 
+// isolateTempDir redirects os.TempDir for one test, so the markers these tests count are
+// only ever their own.
+//
+// ⚠️ TMPDIR ALONE IS POSIX-ONLY: os.TempDir reads TMPDIR on Unix but TMP, then TEMP, on
+// Windows, where these tests were therefore counting markers in the machine's REAL scratch
+// dir — shared with the enroll package's tests, which `go test ./...` runs at the same time.
+// They pass there today by luck: markerCount is an exact assertion, so a marker written by
+// another package is a failure in this one. Set all three; the variable that is ignored on a
+// platform costs nothing.
+func isolateTempDir(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(key, dir)
+	}
+}
+
 // markerCount counts the stale-key markers on disk.
 func markerCount(t *testing.T) int {
 	t.Helper()
@@ -72,7 +89,7 @@ func TestOnlyAnUnauthorizedSkipMarksTheKeyStale(t *testing.T) {
 		review.SkipTimedOut,
 		review.SkipMisconfigured,
 	} {
-		t.Setenv("TMPDIR", t.TempDir())
+		isolateTempDir(t)
 		withKey(t, "lp_live_forthistest")
 		notifyReviewSkipped(noticeAgent{}, ev, &review.SkipError{Reason: reason}, log, io.Discard)
 		if n := markerCount(t); n != 0 {
@@ -81,7 +98,7 @@ func TestOnlyAnUnauthorizedSkipMarksTheKeyStale(t *testing.T) {
 	}
 
 	// And the one that must: a refused credential.
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempDir(t)
 	withKey(t, "lp_live_forthistest")
 	notifyReviewSkipped(noticeAgent{}, ev, &review.SkipError{Reason: review.SkipUnauthorized}, log, io.Discard)
 	if markerCount(t) != 1 {
@@ -93,7 +110,7 @@ func TestOnlyAnUnauthorizedSkipMarksTheKeyStale(t *testing.T) {
 // FACT of a refusal has to be recorded every time: the recovery reads the marker on a later turn,
 // and if the record were suppressed alongside the notice a machine would stay stuck forever.
 func TestTheMarkSurvivesTheNoticeThrottle(t *testing.T) {
-	t.Setenv("TMPDIR", t.TempDir())
+	isolateTempDir(t)
 	withKey(t, "lp_live_forthistest")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ev := agent.Event{SessionID: "sess-throttle"}

@@ -418,6 +418,43 @@ func TestBuildDirPolicy_AbsolutePathsNotDropped(t *testing.T) {
 	}
 }
 
+// TestBuildDirPolicy_ForeignAbsolutePathsNotDropped is the cross-platform half of the
+// test above, and the one that fails on a developer's own machine.
+//
+// The relative-only rule was decided with filepath.IsAbs, which answers the HOST's
+// question: a POSIX path is relative on Windows and a Windows path is relative on POSIX.
+// So the review bypass the rule exists to prevent was reintroduced on whichever OS the
+// path did not come from, and the sibling test could only ever catch the Windows half,
+// on a runner that had not been dispatched in six weeks. These paths are absolute on the
+// other platform and so must stay reviewable everywhere.
+func TestBuildDirPolicy_ForeignAbsolutePathsNotDropped(t *testing.T) {
+	code := "resp = requests.get(url)"
+	for _, path := range []string{
+		`C:\Users\me\out\proj\app.py`,
+		`C:/Users/me/build/service/handler.js`,
+		`D:\work\target\cmd\main.go`,
+		`\\build-server\share\obj\svc\handler.cs`,
+	} {
+		if inert(transcript.Change{FilePath: path, AddedText: code}) {
+			t.Errorf("%s should be REVIEWED (ambiguous build segment as ancestor of an absolute path)", path)
+		}
+	}
+	// The other direction still holds: an unambiguous vendored tree drops on any spelling.
+	for _, path := range []string{
+		`C:\Users\me\proj\node_modules\pkg\index.js`,
+		`C:/Users/me/proj/.venv/lib/mod.py`,
+	} {
+		if !inert(transcript.Change{FilePath: path, AddedText: code}) {
+			t.Errorf("%s should be INERT (unambiguous vendored tree, even absolute)", path)
+		}
+	}
+	// And a genuinely relative path keeps trusting the ambiguous segments, or the rule
+	// would be nothing but a hole: a drive letter is what separates the two cases.
+	if !inert(transcript.Change{FilePath: "out/handler.js", AddedText: code}) {
+		t.Error("out/handler.js should be INERT (relative build output)")
+	}
+}
+
 // TestVendor_EnryUnionAndCarveout locks the enry.IsVendor adoption: the trees enry
 // adds beyond the hand list are skipped, the hand-list floor (venvs, VCS) still
 // works, and the CI carve-out keeps pipeline definitions reviewable.

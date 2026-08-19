@@ -62,7 +62,10 @@ func initRepo(t *testing.T) (dir, session string) {
 		t.Skip("git not installed")
 	}
 	dir = t.TempDir()
-	gitRun(t, dir, "init", "-q")
+	// -b names the initial branch, so a test that checks one out is not at the mercy of
+	// the machine's init.defaultBranch: on a developer with that set to main, the mid-turn
+	// checkout test fails locally while passing on runners that still default to master.
+	gitRun(t, dir, "init", "-q", "-b", "master")
 	if err := os.WriteFile(filepath.Join(dir, "app.py"), []byte("import os\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
