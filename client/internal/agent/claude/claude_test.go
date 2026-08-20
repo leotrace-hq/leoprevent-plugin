@@ -279,15 +279,17 @@ func TestReviewContextStatesSurfacedNotFixed(t *testing.T) {
 		t.Errorf("suggest-only must not be reported as fixed; got %q", sug)
 	}
 
-	// All introduced → genuinely fixed in-turn.
+	// All introduced → flagged for an in-turn fix. The notice says "flagged … to
+	// fix", never "fixed": LeoPrevent does not edit code, and this line is emitted
+	// BEFORE the agent applies anything (see review.ReviewContextMessage).
 	fix := ctxOf([]wire.Finding{{Rule: "a"}, {Rule: "b"}})
-	if !strings.Contains(fix, "fixed 2 findings") {
-		t.Errorf("introduced findings are force-fixed; got %q", fix)
+	if !strings.Contains(fix, "flagged 2 findings to fix") {
+		t.Errorf("introduced findings are flagged for an in-turn fix; got %q", fix)
 	}
 
 	// Mixed → both halves stated, so neither is over- nor under-claimed.
 	mix := ctxOf([]wire.Finding{{Rule: "a"}, {Rule: "b", Preexisting: true}})
-	if !strings.Contains(mix, "fixed 1 finding") || !strings.Contains(mix, "surfaced 1 more") {
+	if !strings.Contains(mix, "flagged 1 finding to fix") || !strings.Contains(mix, "surfaced 1 more") {
 		t.Errorf("mixed notice must state both halves; got %q", mix)
 	}
 }

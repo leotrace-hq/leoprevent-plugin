@@ -295,6 +295,17 @@ func ReviewContextMessage(fileCount int, findings []wire.Finding, forceFixed int
 	// and with a degraded review (no baseline ⇒ nothing anchorable ⇒ everything
 	// classified pre-existing) the surfaced-only case is the COMMON one, not an
 	// edge case. Say which happened.
+	//
+	// EVERY branch describes what the REVIEW did, never what LeoPrevent fixed.
+	// The force-fix branch used to read "and fixed 1 finding below", which is
+	// wrong twice over: it sits under the "🔒 LeoPrevent" byline, so it credits
+	// the reviewer with an edit LeoPrevent never makes (the re-wake asks the
+	// AGENT to fix), and it is emitted BEFORE the fix — this text is the first
+	// thing in the reply, so an agent that then declines, defers or botches the
+	// fix has already reported it as done, with nothing later contradicting it.
+	// "flagged N to fix" is true when written and stays true either way; the
+	// agent reports the actual edits in its own prose below, as the closing
+	// instruction asks. Keep the verbs on the reviewer's side of the line.
 	var tail string
 	switch {
 	case len(findings) == 0:
@@ -302,12 +313,16 @@ func ReviewContextMessage(fileCount int, findings []wire.Finding, forceFixed int
 		// finding we can't count.
 		tail = ". See the review notes below."
 	case forceFixed == 0:
+		subject, verb := "They are", "they need"
+		if len(findings) == 1 {
+			subject, verb = "It is", "it needs"
+		}
 		tail = " and raised " + count(len(findings), "finding") +
-			" for you to review. They are not auto-fixed, so they need your decision."
+			" for you to review. " + subject + " not auto-fixed, so " + verb + " your decision."
 	case forceFixed == len(findings):
-		tail = " and fixed " + count(forceFixed, "finding") + " below."
+		tail = " and flagged " + count(forceFixed, "finding") + " to fix below."
 	default:
-		tail = ", fixed " + count(forceFixed, "finding") + " and surfaced " +
+		tail = ", flagged " + count(forceFixed, "finding") + " to fix and surfaced " +
 			strconv.Itoa(len(findings)-forceFixed) + " more for you to review."
 	}
 
