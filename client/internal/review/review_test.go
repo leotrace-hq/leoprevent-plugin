@@ -241,3 +241,54 @@ func TestBuildFindingsPrompt_SuggestOnlyWinsOverIntroduced(t *testing.T) {
 		t.Fatalf("expected force-fix section before the suggest-only section:\n%s", prompt)
 	}
 }
+
+// TestReviewContextMessageNeverClaimsLeoPreventFixedIt pins the wording of the
+// developer-facing notice: it reports what the REVIEW did, never a completed fix.
+//
+// The line renders under the "🔒 LeoPrevent" byline and is the FIRST thing in the
+// agent's reply, so "and fixed 1 finding below" credited LeoPrevent with an edit
+// it never makes and announced it before the agent had made it. An agent that
+// then declines, defers or botches the force-fix leaves that claim standing with
+// nothing later contradicting it, which is the one failure this notice exists to
+// prevent. Mutation check: revert either verb and this test fails.
+func TestReviewContextMessageNeverClaimsLeoPreventFixedIt(t *testing.T) {
+	forceFix := wire.Finding{Rule: "ssrf", Location: "app.py:12"}
+	surfaced := wire.Finding{Rule: "idor-object-level-authz", Location: "old.py:4", Preexisting: true}
+
+	cases := []struct {
+		name    string
+		f       []wire.Finding
+		want    string
+		wantNot []string
+	}{{
+		name: "all force-fixed",
+		f:    []wire.Finding{forceFix},
+		want: "flagged 1 finding to fix",
+	}, {
+		name: "mixed",
+		f:    []wire.Finding{forceFix, forceFix, surfaced},
+		want: "flagged 2 findings to fix and surfaced 1 more for you to review",
+	}, {
+		name: "surfaced only",
+		f:    []wire.Finding{surfaced},
+		want: "raised 1 finding for you to review",
+	}}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			msg := ReviewContextMessage(9, c.f, ForceFixedCount(c.f))
+			if !strings.Contains(msg, c.want) {
+				t.Errorf("want %q in:\n%s", c.want, msg)
+			}
+			// No branch may state the fix as already done.
+			for _, bad := range []string{"and fixed ", ", fixed "} {
+				if strings.Contains(msg, bad) {
+					t.Errorf("notice claims LeoPrevent fixed it (%q); it only flags, the agent fixes:\n%s", bad, msg)
+				}
+			}
+			if !strings.Contains(msg, "9 changed files") {
+				t.Errorf("notice should state the reviewed file count:\n%s", msg)
+			}
+		})
+	}
+}
