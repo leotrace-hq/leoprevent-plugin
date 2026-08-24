@@ -193,7 +193,7 @@ func groupLocations(findings []wire.Finding) (map[string][]string, []string) {
 			order = append(order, label)
 			groups[label] = nil
 		}
-		if loc := stripTicks(strings.TrimSpace(f.Location)); loc != "" {
+		if loc := findingLocation(f); loc != "" {
 			groups[label] = append(groups[label], loc)
 		}
 	}
