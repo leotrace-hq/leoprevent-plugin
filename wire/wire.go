@@ -187,8 +187,24 @@ type Finding struct {
 	Rule     string `json:"rule"`           // rule ID that fired
 	Name     string `json:"name,omitempty"` // human rule name (e.g. "Server-Side Request Forgery"); server-filled
 	Location string `json:"location"`       // file:line
-	Issue    string `json:"issue"`          // what's wrong
-	Fix      string `json:"fix"`            // the concrete fix to apply
+	// EndLine is the LAST line of the flagged construct, when the judge marked a span
+	// rather than a single line (LEO-37). Absent/0 means the finding is one line, which
+	// is every finding recorded before this field existed.
+	//
+	// ⚠️ IT IS DISPLAY ONLY, AND THAT IS THE WHOLE POINT OF IT BEING A SEPARATE FIELD.
+	// Location stays `file:line` and stays the finding's IDENTITY: the diff anchor that
+	// decides introduced-vs-pre-existing (api.classifyFindings), the (rule, location)
+	// pair behind preexisting_fixed_locs / introduced_resolved_locs, the dashboards'
+	// (repo, developer, rule, location, day) de-dup key, and the cross-turn ledger's
+	// match all read Location alone and must keep doing so. Folding a span into the
+	// identity would change what "the same finding" means across turns: a span that
+	// drifted by one line would become a different finding and every count would
+	// inflate. The server validates the span against the file it actually showed the
+	// judge and drops it when it cannot (api.clampFindingSpans), so a bad span costs a
+	// marker, never a misclassification.
+	EndLine int    `json:"end_line,omitempty"`
+	Issue   string `json:"issue"` // what's wrong
+	Fix     string `json:"fix"`   // the concrete fix to apply
 	// Preexisting is true when the judge determined the violation is in code that
 	// ALREADY existed (not in the lines added this turn). These are SURFACED to the
 	// developer to fix-or-not, never force-fixed in-turn. Absent/false ⇒ introduced

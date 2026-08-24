@@ -178,7 +178,7 @@ func writeFindingGroups(b *strings.Builder, findings []wire.Finding) {
 	for _, label := range order {
 		b.WriteString(stripTicks(label) + "\n")
 		for _, f := range byRule[label] {
-			loc := stripTicks(strings.TrimSpace(f.Location))
+			loc := findingLocation(f)
 			if issue := stripTicks(strings.TrimSpace(f.Issue)); issue != "" {
 				fmt.Fprintf(b, "• %s: %s\n", loc, issue)
 			} else {
@@ -196,6 +196,36 @@ func writeFindingGroups(b *strings.Builder, findings []wire.Finding) {
 		}
 		b.WriteString("\n")
 	}
+}
+
+// findingLocation renders a finding's location for the developer and the agent,
+// widening it to `path:42-58` when the finding marks a SPAN (wire.Finding.EndLine).
+//
+// One definition, shared by the blocking re-wake and the non-blocking notice, because
+// they name the same finding on the same screen: two spellings of one location reads as
+// two findings. The SEPARATOR is a plain hyphen, not an en dash — this text goes to a
+// terminal and to an agent that may echo it back, and a range spelled with a dash a
+// developer cannot type is one they cannot grep for.
+//
+// A span is DISPLAY only. Location itself is untouched, so the string a later /outcome
+// echoes back, and the identity every dashboard de-dupes on, stay `path:line`.
+func findingLocation(f wire.Finding) string {
+	loc := stripTicks(strings.TrimSpace(f.Location))
+	if f.EndLine <= 0 || loc == "" {
+		return loc
+	}
+	// The end is appended only when the location really ends in the START line: the
+	// server guarantees EndLine > that line, but a location with no trailing :N (the
+	// judge cited a symbol when no numbered context was available) has no start to
+	// count from, and `handler:58` would then read as a line number that is not one.
+	i := strings.LastIndexByte(loc, ':')
+	if i < 0 {
+		return loc
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(loc[i+1:])); err != nil || n <= 0 || f.EndLine <= n {
+		return loc
+	}
+	return fmt.Sprintf("%s-%d", loc, f.EndLine)
 }
 
 // stripTicks removes backticks — Claude Code renders the Stop re-wake as plain
@@ -313,12 +343,7 @@ func ReviewContextMessage(fileCount int, findings []wire.Finding, forceFixed int
 		// finding we can't count.
 		tail = ". See the review notes below."
 	case forceFixed == 0:
-		subject, verb := "They are", "they need"
-		if len(findings) == 1 {
-			subject, verb = "It is", "it needs"
-		}
-		tail = " and raised " + count(len(findings), "finding") +
-			" for you to review. " + subject + " not auto-fixed, so " + verb + " your decision."
+		tail = " and raised " + count(len(findings), "finding") + " for you to review."
 	case forceFixed == len(findings):
 		tail = " and flagged " + count(forceFixed, "finding") + " to fix below."
 	default:

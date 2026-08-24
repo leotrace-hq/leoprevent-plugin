@@ -111,6 +111,53 @@ func TestBuildFindingsPrompt(t *testing.T) {
 	}
 }
 
+// A finding that marks a SPAN names the whole construct in the re-wake and in the
+// developer's notice, and the two must SPELL IT THE SAME WAY: they render on the same
+// screen about the same finding, so two spellings read as two findings. One helper,
+// asserted through both entry points.
+//
+// The separator is a plain HYPHEN. This text reaches a terminal and an agent that may
+// echo it back, and a range spelled with an en dash is one a developer cannot type and
+// cannot grep for.
+func TestFindingSpanRendersAsARangeInBothOutputs(t *testing.T) {
+	f := wire.Finding{
+		Rule: "ssrf", Name: "Server-Side Request Forgery",
+		Location: "app.py:42", EndLine: 58, Issue: "unvalidated fetch", Fix: "resolve first",
+	}
+	prompt := BuildFindingsPrompt([]wire.Finding{f})
+	if !strings.Contains(prompt, "app.py:42-58") {
+		t.Errorf("re-wake must name the span:\n%s", prompt)
+	}
+	notice := FixStillVulnerableNotice([]wire.Finding{f})
+	if !strings.Contains(notice, "app.py:42-58") {
+		t.Errorf("notice must name the same span:\n%s", notice)
+	}
+	for _, s := range []string{prompt, notice} {
+		if strings.Contains(s, "\u2013") || strings.Contains(s, "\u2014") {
+			t.Errorf("a span must be a plain hyphen, never a dash a developer cannot type:\n%s", s)
+		}
+	}
+	// No span ⇒ byte-identical to what a single-line finding always produced.
+	plain := f
+	plain.EndLine = 0
+	if got := BuildFindingsPrompt([]wire.Finding{plain}); !strings.Contains(got, "app.py:42") || strings.Contains(got, "42-") {
+		t.Errorf("a single-line finding must render unchanged:\n%s", got)
+	}
+}
+
+// ⚠️ A LOCATION WITH NO TRAILING LINE NUMBER GETS NO RANGE, even when the server sent a
+// span. The judge cites a symbol name when it was shown no numbered context, and
+// "handler-58" would read as a line number that is not one — there is no start for the
+// end to be relative to.
+func TestFindingSpanIsNotAppendedToALocationWithoutALine(t *testing.T) {
+	got := BuildFindingsPrompt([]wire.Finding{
+		{Rule: "ssrf", Name: "SSRF", Location: "app.py:fetch_url", EndLine: 58, Issue: "i", Fix: "f"},
+	})
+	if strings.Contains(got, "58") {
+		t.Errorf("an unnumbered location must not gain a range:\n%s", got)
+	}
+}
+
 // TestBuildFindingsPrompt_SplitsPreexisting: introduced findings are force-fixed
 // ("don't ask"); pre-existing ones are surfaced with an explicit "ask the developer,
 // don't fix now" instruction. The two are clearly separated.
