@@ -269,7 +269,7 @@ func TestReviewContextStatesSurfacedNotFixed(t *testing.T) {
 	if strings.Contains(pre, "and fixed") {
 		t.Errorf("surfaced-only notice must not claim a fix; got %q", pre)
 	}
-	if !strings.Contains(pre, "2 findings") || !strings.Contains(pre, "your decision") {
+	if !strings.Contains(pre, "2 findings") || !strings.Contains(pre, "for you to review") {
 		t.Errorf("surfaced-only notice should say what's waiting on the dev; got %q", pre)
 	}
 

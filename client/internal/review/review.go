@@ -313,12 +313,7 @@ func ReviewContextMessage(fileCount int, findings []wire.Finding, forceFixed int
 		// finding we can't count.
 		tail = ". See the review notes below."
 	case forceFixed == 0:
-		subject, verb := "They are", "they need"
-		if len(findings) == 1 {
-			subject, verb = "It is", "it needs"
-		}
-		tail = " and raised " + count(len(findings), "finding") +
-			" for you to review. " + subject + " not auto-fixed, so " + verb + " your decision."
+		tail = " and raised " + count(len(findings), "finding") + " for you to review."
 	case forceFixed == len(findings):
 		tail = " and flagged " + count(forceFixed, "finding") + " to fix below."
 	default:
