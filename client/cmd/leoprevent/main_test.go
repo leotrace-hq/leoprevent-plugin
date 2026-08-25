@@ -104,3 +104,55 @@ func TestNewAgentDispatch(t *testing.T) {
 		})
 	}
 }
+
+// TestPreToolUseNeverReachesReview is the guard on the sharpest failure this event can
+// cause, and it is not a missed baseline.
+//
+// Everything that is not UserPromptSubmit falls through to the review path, and the
+// manifests now register PreToolUse on every write tool. So a PreToolUse that is not
+// routed away runs a selector, a judge and a possible BLOCK on EVERY file the agent
+// edits, mid-turn — the PreToolUse hard gate the non-negotiables forbid, arrived at by
+// accident.
+//
+// Asserted as SILENCE, which is exactly what TestRunStopWithoutConfigFailsOpen shows the
+// Stop branch does NOT produce: reaching config.Load with no leoprevent.json emits a
+// misconfigured notice on stdout. Empty stdout therefore proves the Stop branch was never
+// entered. Every session id is unique because that notice is throttled once per session
+// per reason, and a shared id would let the throttle hide a real regression.
+func TestPreToolUseNeverReachesReview(t *testing.T) {
+	for _, tc := range []struct{ name, agent, stdin string }{
+		{"claude", "--agent=claude",
+			`{"hook_event_name":"PreToolUse","session_id":"ptu-claude","cwd":"/tmp",` +
+				`"tool_name":"Write","tool_input":{"file_path":"/tmp/x/app.py"}}`},
+		{"codex", "--agent=codex",
+			`{"hook_event_name":"PreToolUse","session_id":"ptu-codex","cwd":"/tmp",` +
+				`"tool_name":"Write","tool_input":{"file_path":"/tmp/x/app.py"}}`},
+		// VS Code speaks the snake_case dialect...
+		{"copilot-vscode", "--agent=copilot",
+			`{"hook_event_name":"PreToolUse","session_id":"ptu-cop-vs","cwd":"/tmp",` +
+				`"tool_name":"Write","tool_input":{"file_path":"/tmp/x/app.py"}}`},
+		// ...the CLI camelCase, with its own spelling of the event.
+		{"copilot-cli", "--agent=copilot",
+			`{"hookEventName":"preToolUse","sessionId":"ptu-cop-cli","cwd":"/tmp",` +
+				`"toolName":"Write","toolInput":{"filePath":"/tmp/x/app.py"}}`},
+		// And the CLI documents no event-name field at all, so a payload carrying only
+		// a tool must still be inferred as PreToolUse rather than read as a Stop.
+		{"copilot-cli-inferred", "--agent=copilot",
+			`{"sessionId":"ptu-cop-inf","cwd":"/tmp",` +
+				`"toolName":"Edit","toolInput":{"filePath":"/tmp/x/app.py"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, stdout, stderr := runWith(t, []string{tc.agent}, tc.stdin)
+			if code != 0 {
+				t.Errorf("must exit 0, got %d", code)
+			}
+			if stdout != "" {
+				t.Errorf("PreToolUse reached the review path: it must decide nothing and "+
+					"print nothing, got stdout=%q", stdout)
+			}
+			if stderr != "" {
+				t.Errorf("PreToolUse must be silent, got stderr=%q", stderr)
+			}
+		})
+	}
+}

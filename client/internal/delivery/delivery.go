@@ -181,11 +181,9 @@ func (h Cloud) Review(cwd string, changes []transcript.Change, meta wire.TurnMet
 	// (no git root, unreadable file) just yields less context, never a broken review.
 	var ctx []wire.ContextFile
 	if h.resolveImports {
-		if root := vcs.RepoRoot(cwd); root != "" {
-			ctx = imports.Resolve(root, changes)
-			if len(ctx) > 0 {
-				slog.Info("cloud: resolved cross-file context", "files", len(ctx))
-			}
+		ctx = resolveContext(cwd, changes)
+		if len(ctx) > 0 {
+			slog.Info("cloud: resolved cross-file context", "files", len(ctx))
 		}
 	}
 	// Split the changed files into request-sized batches so NO single POST exceeds the
@@ -448,4 +446,87 @@ func changesText(changes []transcript.Change) string {
 		fmt.Fprintf(&b, "### %s\n%s\n\n", c.FilePath, c.AddedText)
 	}
 	return b.String()
+}
+
+// resolveContext resolves the one-hop imported helpers the changed code calls into,
+// for EVERY repository the turn touched, each against ITS OWN root.
+//
+// ⚠️ THE PER-REPOSITORY ROOT IS WHAT MAKES CONTEXT WORK AT ALL IN A WORKSPACE. An
+// import resolves relative to the project it was written in, so anchoring on the
+// workspace folder reads paths against the wrong base and builds the index over the
+// wrong tree.
+//
+// MEASURED, because an earlier version of this comment claimed more than was true: the
+// workspace-anchored variant returns NO context rather than a SIBLING project's file,
+// for both a path-based language (Python) and an index-based one (Go) — see
+// context_test.go. So this is a quality property, not the cross-project egress bug it
+// was first described as. The sibling tests stay anyway: they cost nothing and they
+// are what would catch a future resolver that does reach across.
+//
+// ⚠️ AND THE BYTE BUDGET IS SHARED ACROSS REPOSITORIES. imports.Resolve enforces
+// limits.MaxContextTotalBytes per CALL, so resolving per repo would otherwise permit
+// N times the cap — the same multiplication the changed-file budget already avoids.
+// Trimming here keeps one turn's context bounded however many projects it spans.
+//
+// Paths come back relative to the repository they were resolved in, so they are
+// re-qualified with its directory to match the changed files the judge sees them
+// beside. Best-effort throughout: a repo whose root cannot be resolved contributes
+// nothing rather than failing the review.
+func resolveContext(cwd string, changes []transcript.Change) []wire.ContextFile {
+	if len(changes) == 0 {
+		return nil
+	}
+	// Group by repository label, preserving first-seen order so the result is stable,
+	// and strip the label prefix: Resolve reads paths relative to the root it is given.
+	//
+	// ⚠️ THE ROOT COMES OFF THE CHANGE (Change.RepoRoot), NOT FROM cwd/label. A label is
+	// a BASENAME — a repository discovered at PreToolUse can live anywhere on the
+	// filesystem — so joining it onto cwd resolves nothing for a repo outside cwd and,
+	// where cwd holds a same-named project, resolves the WRONG one and egresses that
+	// project's code as context. See the note on Change.RepoRoot.
+	var order []string
+	byRepo := map[string][]transcript.Change{}
+	rootOf := map[string]string{}
+	for _, c := range changes {
+		if _, seen := byRepo[c.RepoDir]; !seen {
+			order = append(order, c.RepoDir)
+			rootOf[c.RepoDir] = c.RepoRoot
+		}
+		local := c
+		if c.RepoDir != "" {
+			local.FilePath = strings.TrimPrefix(c.FilePath, c.RepoDir+"/")
+		}
+		byRepo[c.RepoDir] = append(byRepo[c.RepoDir], local)
+	}
+
+	var out []wire.ContextFile
+	total := 0
+	for _, rel := range order {
+		// No recorded root means the transcript fallback (no git), where cwd is the
+		// only directory there is — the behaviour that path always had.
+		dir := rootOf[rel]
+		if dir == "" {
+			if rel != "" {
+				continue // labelled but rootless: nothing honest to resolve against
+			}
+			dir = cwd
+		}
+		root := vcs.RepoRoot(dir)
+		if root == "" {
+			continue // not a repository (or git errored) → no context from it
+		}
+		for _, cf := range imports.Resolve(root, byRepo[rel]) {
+			if total+len(cf.Content) > limits.MaxContextTotalBytes {
+				slog.Info("cloud: cross-file context budget reached — later repos contribute less",
+					"repo", rel, "files_so_far", len(out))
+				return out
+			}
+			total += len(cf.Content)
+			if rel != "" {
+				cf.Path = rel + "/" + cf.Path
+			}
+			out = append(out, cf)
+		}
+	}
+	return out
 }

@@ -147,6 +147,21 @@ type TurnMeta struct {
 	BaselineHead    string `json:"baseline_head,omitempty"`
 	ImportedDropped int    `json:"imported_dropped,omitempty"`
 	BaselineSkip    string `json:"baseline_skip,omitempty"`
+
+	// HeadAnchoredRepos names repositories in this turn that had NO turn-start baseline
+	// and were reviewed against HEAD as a last resort (basenames; the absolute path is
+	// the developer's machine and never travels).
+	//
+	// ⚠️ IT MARKS A WEAKER REVIEW AND EVERY SURFACE THAT RENDERS ONE MUST SAY SO. A HEAD
+	// anchor cannot separate this turn's work from whatever was already uncommitted, so
+	// the diff is a superset of the turn and the findings are SURFACED for the developer
+	// to fix now or later rather than applied in-turn. A review carrying this is not
+	// comparable to a baselined one: its finding counts may include pre-existing work,
+	// so it must not be read as "the agent introduced these".
+	//
+	// Set by the client from vcs.BaselineInfo. Absent on every ordinary turn, which is
+	// why it is omitempty — the common case adds no bytes.
+	HeadAnchoredRepos []string `json:"head_anchored_repos,omitempty"`
 	// AgentNote is the coding agent's OWN end-of-turn message (last_assistant_message at
 	// the FIRST Stop, before any re-wake) — what the agent itself said about the code it
 	// wrote, including issues it flagged but chose not to fix. BODY (the agent's text).

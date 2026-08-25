@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/leotrace-hq/leoprevent-plugin/client/internal/config"
 )
 
 // A KEY THE SERVER REJECTS IS A DEAD END, AND THIS IS HOW WE GET OUT OF IT.
@@ -58,20 +56,48 @@ func keyMarker(key string) string {
 	return hex.EncodeToString(sum[:])[:32]
 }
 
+// active is the credential this process is authenticating with, recorded by Ensure. Package
+// state because the engine calls MarkStaleKey holding a Reviewer, not a config, and the value
+// has to come from the one place that resolved it.
+var active string
+
+// noteActiveKey records the credential the reviewer is built with. Called by Ensure.
+func noteActiveKey(key string) { active = key }
+
+// SetActiveKeyForTest sets the credential MarkStaleKey will mark, and returns a func restoring
+// the previous value. Tests that exercise the unauthorized path without going through Ensure
+// need this; without it they mark nothing, which is the safe direction (see MarkStaleKey).
+func SetActiveKeyForTest(key string) func() {
+	prev := active
+	active = key
+	return func() { active = prev }
+}
+
 // MarkStaleKey records that the server rejected the key this machine is currently using.
 //
-// It resolves the key itself rather than taking one as an argument, so the engine can call it
-// without threading the credential through, and so the value marked is exactly the one the
-// client actually sent.
+// ⚠️ IT MARKS THE KEY Ensure RECORDED, AND MUST NEVER RESOLVE ONE ITSELF. It used to read the
+// per-user license.json directly, which was wrong twice over:
+//
+//   - IN PRODUCTION it marked the wrong credential. The key actually sent is the RESOLVED one
+//     (plugin json → per-user file → $LEOPREVENT_LICENSE_KEY, later wins), so on any machine
+//     using the env override or a plugin-baked key the digest never matched what staleKeyMarked
+//     later looked up, and the recovery this whole file exists for could not fire at all.
+//
+//   - IN A TEST BINARY it reached the DEVELOPER'S REAL key and wrote a marker into their REAL
+//     scratch dir, so merely running `go test ./...` armed a spurious re-enrolment and rotated
+//     a working credential — invalidating it on that developer's other machines. Silently, since
+//     every path here fails open. engine_test.go drove the unauthorized path without isolating
+//     either global and did exactly this; the hazard was known (stalekey_test.go's withKey warns
+//     about it in as many words) but guarded per-test, which is a convention and not a boundary.
+//
+// Reading only what Ensure recorded closes both: it is by construction the credential the client
+// sent, and a binary that never calls Ensure has none, so there is nothing to reach.
 //
 // Deliberately only called for an UNAUTHORIZED reply. A timeout, an unreachable server or a 5xx
 // say nothing about whether the key is valid, and discarding a good credential because the
 // server was briefly down would rotate a whole fleet's keys over an outage that fixed itself.
 func MarkStaleKey() {
-	// The per-user file, NOT config.Load: Load fails on a missing server_url, so building this on
-	// it made the recovery silently no-op in a test binary and would do the same on any machine
-	// with a broken plugin config. See config.UserLicenseKey for the env-override caveat.
-	key := config.UserLicenseKey()
+	key := active
 	if key == "" {
 		return
 	}

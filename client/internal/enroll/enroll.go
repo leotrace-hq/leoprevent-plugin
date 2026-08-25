@@ -15,10 +15,16 @@
 // the turn to proceed unreviewed: a developer must never be trapped because enrolment did not
 // work. The Stop path's existing skip notice is what tells them the turn was not reviewed.
 //
-// ⚠️ ATTEMPTED AT MOST ONCE PER SESSION. A machine whose address the admin has not authorised
-// would otherwise POST to /enroll on every single Stop, forever. Once per session is enough to
-// pick up an admin's fix promptly while bounding a fleet of unauthorised machines to one request
-// each per session.
+// ⚠️ A FIRST-TIME ENROLMENT IS ATTEMPTED AT MOST ONCE PER SESSION. A machine whose address the
+// admin has not authorised would otherwise POST to /enroll on every single Stop, forever. Once
+// per session is enough to pick up an admin's fix promptly while bounding a fleet of
+// unauthorised machines to one request each per session.
+//
+// ⚠️ A RE-ENROLMENT IS BOUNDED DIFFERENTLY, AND MUST NOT SHARE THAT BUDGET. Recovering from a
+// refused credential only runs for a key the server actually rejected, and is rate-limited
+// machine-wide by reEnrolCooldown — both tighter than a session. Sharing the session budget
+// stranded a live machine for hours: it recovered once, and every later rejection that day found
+// the budget spent. See throttleKey.
 package enroll
 
 import (
@@ -35,17 +41,24 @@ import (
 	"github.com/leotrace-hq/leoprevent-plugin/wire"
 )
 
-// throttleKey namespaces a first-time enrolment attempt in the per-session scratch the skip
-// notices use. resetKey namespaces the SEPARATE re-enrolment attempt, so a machine recovering
-// from a rejected key is not silenced by having already tried a first-time enrolment earlier
-// in the same session.
-const (
-	throttleKey = "enroll_attempt"
-	resetKey    = "enroll_reset"
-)
+// throttleKey namespaces a FIRST-TIME enrolment attempt in the per-session scratch the skip
+// notices use.
+//
+// ⚠️ IT GATES THE FIRST-TIME PATH ONLY, AND A RE-ENROLMENT MUST NOT SHARE IT. Doing so was a
+// live bug: a machine that recovered once in a session consumed the budget, so every later
+// rejection in that session found it spent and returned without minting. A session is a
+// working day on a long-running agent, which is exactly the window in which a seat is revoked
+// and re-granted, or a key rotated on another machine.
+//
+// A re-enrolment needs no session throttle because it is already bounded twice, and both bounds
+// are tighter: it only runs for a credential the server actually refused (staleKeyMarked), and
+// reEnrolCooldown caps the rate machine-wide. A companion resetKey const was declared for this
+// and never referenced — an unused package-level const compiles silently, so the gap looked
+// closed in review while the code took throttleKey on both paths.
+const throttleKey = "enroll_attempt"
 
 // Ensure enrols this machine if it has no key and has been given a token, and reports whether
-// cfg now carries a usable license key.
+// cfg is known to carry a usable license key.
 //
 // It MUTATES cfg on success, so the caller's reviewer is built with the new key and the very first
 // turn is reviewed rather than the second. It also persists the key, and the ORDER matters: the
@@ -55,6 +68,14 @@ func Ensure(cfg *config.Config, cwd, sessionID string) bool {
 	if cfg == nil {
 		return false
 	}
+	// ⚠️ RECORD THE CREDENTIAL THE REVIEWER WILL ACTUALLY BE BUILT WITH. Ensure runs immediately
+	// before delivery.New(cfg), so whatever cfg holds when this returns is what every request this
+	// turn authenticates as — including a key just minted above. MarkStaleKey needs exactly that
+	// value and cannot reach it any other way: the engine holds a Reviewer, not a config.
+	//
+	// Deferred rather than assigned at each return, so a branch added later cannot forget it.
+	defer func() { noteActiveKey(cfg.LicenseKey) }()
+
 	rejected := ""
 	if cfg.LicenseKey != "" {
 		// ⚠️ A KEY THE SERVER REJECTED IS NOT A KEY. Without this branch a machine holding an
@@ -73,11 +94,21 @@ func Ensure(cfg *config.Config, cwd, sessionID string) bool {
 		}
 		slog.Warn("the server rejected this machine's license key; re-enrolling")
 		noteReEnrolAttempt()
-		// Remembered so the marker can be cleared on success. Cleared in memory only: license.json
-		// is left alone until a mint SUCCEEDS, because deleting it on the way to a failed enrolment
-		// would take a possibly-recoverable credential away and leave nothing behind.
+		// Remembered so the marker can be cleared on success, and so the guards below can tell a
+		// recovery from a first-time enrolment.
+		//
+		// ⚠️ THE KEY IS NOT CLEARED HERE, AND CLEARING IT WAS WORSE THAN A NO-OP. Every guard
+		// below can still return without minting, and a cleared key then leaves the reviewer with
+		// NO credential — turning a request that might have been accepted into a certain 401
+		// ("missing license"). Live, that cost one review in every two while a machine was in this
+		// state. Nothing needs it cleared: the enrolment call builds its own unauthenticated client
+		// on the line below, and license.json is left alone until a mint SUCCEEDS anyway, so
+		// discarding the in-memory copy only ever removed the fallback.
+		//
+		// Our belief that the key is dead can also simply be wrong (a marker written against the
+		// wrong credential, a server that refused it once), so keeping it is the fail-open reading:
+		// degrade as little as possible, and let the server be the one that says no.
 		rejected = cfg.LicenseKey
-		cfg.LicenseKey = ""
 	}
 	if cfg.EnrollToken == "" {
 		return false // no token pushed: this deployment does not use enrolment
@@ -87,7 +118,9 @@ func Ensure(cfg *config.Config, cwd, sessionID string) bool {
 	if cfg.Tier != config.TierCloud {
 		return false
 	}
-	if !notify.FirstThisSession(sessionID, throttleKey) {
+	// FIRST-TIME enrolments only — a recovery is bounded by the stale marker and the cooldown
+	// instead. See throttleKey for why sharing this budget stranded a machine for a whole session.
+	if rejected == "" && !notify.FirstThisSession(sessionID, throttleKey) {
 		return false
 	}
 

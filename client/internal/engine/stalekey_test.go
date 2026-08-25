@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/agent"
-	"github.com/leotrace-hq/leoprevent-plugin/client/internal/config"
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/enroll"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/review"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/transcript"
 	"github.com/leotrace-hq/leoprevent-plugin/wire"
@@ -30,16 +30,21 @@ func (noticeAgent) DeliverReview(string, string, int, []wire.Finding) ([]byte, e
 func (noticeAgent) DeliverNotice(string) ([]byte, error)               { return []byte("{}"), nil }
 func (noticeAgent) DeliverPromptNotice(string, string) ([]byte, error) { return []byte("{}"), nil }
 
-// withKey isolates the per-user config dir and puts a license key in it, so MarkStaleKey has a
-// credential to mark. Without this the test would read the DEVELOPER'S REAL key and write a
-// marker into their real scratch dir — which the first version of this test did, and which would
-// have armed a spurious re-enrolment on this machine.
+// withKey gives MarkStaleKey a credential to mark, as enroll.Ensure does in production.
+//
+// ⚠️ IT NO LONGER WRITES A LICENSE FILE, AND THAT IS THE POINT. MarkStaleKey used to resolve the
+// key itself out of the per-user license.json, so a test that did not redirect the config dir
+// marked the DEVELOPER'S REAL key and wrote into their real scratch — arming a spurious
+// re-enrolment that rotated a working credential. This helper guarded against that by
+// redirecting, and the sibling test in this same package did not, so it happened: measured live
+// on 2026-08-25, half the turns on this machine lost their review.
+//
+// A convention that has to be remembered at every call site is not a boundary. MarkStaleKey now
+// marks only what Ensure recorded, so a binary that never calls Ensure has nothing to mark and
+// cannot reach real state at all — whether or not it remembered to isolate.
 func withKey(t *testing.T, key string) {
 	t.Helper()
-	t.Cleanup(config.SetUserConfigDirForTest(t.TempDir()))
-	if _, err := config.SaveLicense(key); err != nil {
-		t.Fatalf("seed license: %v", err)
-	}
+	t.Cleanup(enroll.SetActiveKeyForTest(key))
 }
 
 // isolateTempDir redirects os.TempDir for one test, so the markers these tests count are
@@ -124,5 +129,29 @@ func TestTheMarkSurvivesTheNoticeThrottle(t *testing.T) {
 	notifyReviewSkipped(noticeAgent{}, ev, &review.SkipError{Reason: review.SkipUnauthorized}, log, io.Discard)
 	if markerCount(t) != 1 {
 		t.Error("the mark was suppressed along with the throttled notice; recovery would never fire again")
+	}
+}
+
+// TestAnUnauthorizedSkipWithNoActiveKeyMarksNothing pins the property that made this safe.
+//
+// The damage was done by a test in this very package (TestReviewSkipEmitsNonBlockingNoticeAndThrottles)
+// which drives the unauthorized path and isolates neither the temp dir nor the per-user config.
+// It did not need fixing: no active key is recorded unless enroll.Ensure ran, and no test runs
+// Ensure, so there is nothing to resolve and nothing to write.
+//
+// Deliberately asserted WITHOUT withKey and WITHOUT isolateTempDir, i.e. under exactly the
+// conditions that caused the incident. If MarkStaleKey ever learns to resolve a credential on its
+// own again, this fails — and it fails here rather than on somebody's laptop a week later.
+func TestAnUnauthorizedSkipWithNoActiveKeyMarksNothing(t *testing.T) {
+	t.Cleanup(enroll.SetActiveKeyForTest("")) // as a fresh process starts: nothing recorded
+
+	before := markerCount(t)
+	notifyReviewSkipped(noticeAgent{}, agent.Event{SessionID: "sess-no-active-key"},
+		&review.SkipError{Reason: review.SkipUnauthorized},
+		slog.New(slog.NewTextHandler(io.Discard, nil)), io.Discard)
+
+	if after := markerCount(t); after != before {
+		t.Errorf("markers %d → %d: the unauthorized path reached real state with no key recorded, "+
+			"so running the suite marks the developer's own credential rejected", before, after)
 	}
 }

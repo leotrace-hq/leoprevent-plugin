@@ -135,6 +135,32 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		slog.Error("parse stdin failed; failing open", "err", err.Error())
 		return failOpen("parse stdin: %v", err)
 	}
+	// ⚠️ ROUTED BEFORE THE STOP BRANCH, AND THE ORDER IS THE WHOLE SAFETY PROPERTY.
+	// Everything that is not UserPromptSubmit falls through to the review path, so an
+	// unhandled PreToolUse would run a selector, a judge and a possible BLOCK on EVERY
+	// tool call the agent makes, mid-turn. The manifests register the event, so this
+	// branch must exist for as long as they do.
+	//
+	// It decides nothing and prints nothing: this is repo DISCOVERY, not the PreToolUse
+	// hard gate the non-negotiables forbid. Exit 0, no decision, no stdout.
+	if ev.IsPreToolUse() {
+		// Recording is best-effort by design; a failure costs one repo's baseline and
+		// the Stop path still reviews everything it did capture.
+		// Every candidate, not the first: a Bash command names its target inside a
+		// string, so the paths are a best-effort scavenge in which most entries name
+		// nothing (see agent.BashPathCandidates). Recording is idempotent per repo
+		// root and returns early for a path outside any repository, so the loop costs
+		// one RepoRoot walk per candidate and records at most one section each.
+		for _, p := range ev.EditPaths {
+			if err := vcs.RecordEditedRepo(p, ev.Cwd, ev.SessionID); err != nil {
+				// INFO, not Debug: the client logs at INFO, so a Debug line here made
+				// a failed capture indistinguishable from a hook that never ran — the
+				// ambiguity that made this event's first live failure unreadable.
+				slog.Info("pre-tool-use repo capture failed (continuing)", "err", err.Error(), "path", p)
+			}
+		}
+		return 0
+	}
 	if ev.IsUserPromptSubmit() {
 		if err := vcs.CaptureBaseline(ev.Cwd, ev.SessionID); err != nil {
 			slog.Warn("baseline capture failed (review will fall back to transcript)", "err", err.Error())

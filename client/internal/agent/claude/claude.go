@@ -94,6 +94,9 @@ type hookPayload struct {
 	StopHookActive       bool   `json:"stop_hook_active"`
 	Cwd                  string `json:"cwd"`
 	LastAssistantMessage string `json:"last_assistant_message"`
+	// ToolInput is the PreToolUse tool argument object. Decoded loosely because the
+	// shape differs per tool and we want exactly one field out of it (the path).
+	ToolInput map[string]any `json:"tool_input"`
 }
 
 // ParseEvent decodes Claude's hook stdin (UserPromptSubmit or Stop).
@@ -109,6 +112,7 @@ func (*Adapter) ParseEvent(stdin []byte) (agent.Event, error) {
 		SessionID:            p.SessionID,
 		Cwd:                  p.Cwd,
 		LastAssistantMessage: p.LastAssistantMessage,
+		EditPaths:            agent.EditPathsFromToolInput(p.ToolInput),
 	}, nil
 }
 

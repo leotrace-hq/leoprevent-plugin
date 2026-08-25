@@ -61,6 +61,10 @@ type hookPayload struct {
 	StopHookActive       bool   `json:"stop_hook_active"`
 	Cwd                  string `json:"cwd"`
 	LastAssistantMessage string `json:"last_assistant_message"`
+	// ToolInput mirrors the Claude adapter. Codex's PreToolUse payload is NOT verified
+	// (its Stop contract matches Claude's exactly, so the same shape is the best guess);
+	// an unrecognised shape yields no path, which costs a baseline and never a wrong one.
+	ToolInput map[string]any `json:"tool_input"`
 }
 
 // ParseEvent decodes Codex's hook stdin (UserPromptSubmit or Stop). The Stop hook +
@@ -81,6 +85,7 @@ func (*Adapter) ParseEvent(stdin []byte) (agent.Event, error) {
 		SessionID:            p.SessionID,
 		Cwd:                  p.Cwd,
 		LastAssistantMessage: p.LastAssistantMessage,
+		EditPaths:            agent.EditPathsFromToolInput(p.ToolInput),
 	}, nil
 }
 

@@ -34,6 +34,18 @@ const (
 	// deadline (a slow / overloaded judge). Distinct from SkipUnreachable (never
 	// connected) so the developer learns the turn TIMED OUT, not that the server is down.
 	SkipTimedOut
+	// SkipNoBaseline: there was no usable git baseline for this turn, so no changed
+	// files could be discovered and nothing was reviewed. Decided LOCALLY (like
+	// SkipMisconfigured) — the server is never contacted, so this reason never arrives
+	// as a SkipError from the reviewer.
+	//
+	// ⚠️ THIS IS THE ONE SKIP A DEVELOPER CANNOT OTHERWISE NOTICE. Every other reason
+	// follows something visibly wrong (a down server, a bad key). This one looks
+	// EXACTLY like a quiet turn: the stop proceeds, nothing is printed, and the
+	// dashboard records the turn as no_change. On an agent with no transcript fallback
+	// (copilot) that means zero coverage for as long as the condition holds, with no
+	// signal anywhere — a real pilot spent a weekend in that state before asking.
+	SkipNoBaseline
 )
 
 // String is the stable, log-friendly label for a reason (plugin client.log).
@@ -49,6 +61,8 @@ func (r SkipReason) String() string {
 		return "misconfigured"
 	case SkipTimedOut:
 		return "timed_out"
+	case SkipNoBaseline:
+		return "no_baseline"
 	default:
 		return "unknown"
 	}
@@ -89,6 +103,15 @@ func SkipNotice(reason SkipReason) string {
 		return "⚠️ LeoPrevent: misconfigured (check leoprevent.json). This turn was NOT reviewed."
 	case SkipTimedOut:
 		return "⚠️ LeoPrevent: the security review timed out. This turn was NOT reviewed (server slow or overloaded)."
+	case SkipNoBaseline:
+		// ⚠️ IT MUST NOT SAY `git init`. The commonest cause is NOT a developer who
+		// forgot to init: it is a workspace folder holding SEVERAL repos, opened as one
+		// parent so files can be referenced across projects. Running `git init` there
+		// creates an outer repo whose nested repos are recorded as GITLINKS (mode
+		// 160000, "Subproject commit <sha>"), so no file inside any of them is ever
+		// captured. The advice would look followed and change nothing. Name the folder
+		// and let the developer see which case they are in.
+		return "⚠️ LeoPrevent: no git snapshot for this turn, so nothing was reviewed. Is the folder open in your editor a git repository? If it contains several, open the one you are working in."
 	default:
 		return "⚠️ LeoPrevent: security review unavailable. This turn was NOT reviewed."
 	}

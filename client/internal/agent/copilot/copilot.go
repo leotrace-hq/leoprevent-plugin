@@ -93,6 +93,24 @@ type hookPayload struct {
 	StopReason      string `json:"stop_reason"`
 	StopReasonCamel string `json:"stopReason"`
 	Prompt          string `json:"prompt"`
+	// ToolName/ToolInput are the PreToolUse half, in both dialects. Copilot's
+	// PreToolUse payload is UNVERIFIED — neither runtime documents one — so both
+	// casings are read and an unrecognised shape simply yields no path.
+	//
+	// ⚠️ AND BOTH COPILOT HOOK MANIFESTS DELIBERATELY CARRY NO `matcher`, unlike
+	// Claude's and Codex's. A matcher filters on the agent's own TOOL NAMES, and
+	// Copilot's are not Claude's: "Write|Edit|MultiEdit|NotebookEdit" is a list of
+	// tools Copilot does not have, so it would match nothing and the hook would never
+	// fire — silently, which is precisely the failure mode the repo discovery exists to
+	// remove. Unmatched is the cheap direction: a tool naming no file yields "" and
+	// RecordEditedRepo returns immediately, and a tool that merely READS a file costs
+	// one baseline for a repository we would otherwise not have seen, which can only
+	// widen what a later Bash write is measured against. Narrow the manifest only once
+	// the real tool names are verified against a live runtime.
+	ToolName       string         `json:"tool_name"`
+	ToolNameCamel  string         `json:"toolName"`
+	ToolInput      map[string]any `json:"tool_input"`
+	ToolInputCamel map[string]any `json:"toolInput"`
 }
 
 // ParseEvent decodes Copilot's hook stdin (either dialect) into the normalized
@@ -114,9 +132,18 @@ func (a *Adapter) ParseEvent(stdin []byte) (agent.Event, error) {
 		SessionID:            a.sessionID,
 		Cwd:                  p.Cwd,
 		LastAssistantMessage: p.LastAssistantMessage, // undocumented for Copilot; kept in case it appears
+		EditPaths:            agent.EditPathsFromToolInput(p.toolInput()),
 	}
 	if ev.IsUserPromptSubmit() {
 		clearGuard(a.sessionID)
+		return ev, nil
+	}
+	// ⚠️ RETURN BEFORE THE GUARD BLOCK BELOW IS REACHED. Copilot self-manages its loop
+	// guard (the CLI documents no stop_hook_active), and consumeGuard is DESTRUCTIVE —
+	// so letting a PreToolUse fall through would spend the marker armed by the block we
+	// just delivered, and the post-re-wake Stop would then re-review and re-block. A
+	// tool call is not a Stop and must not be read as one.
+	if ev.IsPreToolUse() {
 		return ev, nil
 	}
 	// Stop: read the marker's block-delivery stamp BEFORE anything can remove it, and
@@ -181,7 +208,20 @@ func normalizeEventName(p hookPayload) string {
 	switch name {
 	case "userPromptSubmitted", agent.EventUserPromptSubmit:
 		return agent.EventUserPromptSubmit
+	// ⚠️ EVERY SPELLING MUST LAND ON THE CONSTANT. An unrecognised name reaches the
+	// `default` below, which hands it to the review path — so a missed spelling here is
+	// not a lost baseline, it is a selector, a judge and a possible BLOCK on every tool
+	// call the agent makes. Copilot documents no PreToolUse event at all, so all three
+	// plausible spellings are accepted rather than guessed between.
+	case "preToolUse", "pre_tool_use", agent.EventPreToolUse:
+		return agent.EventPreToolUse
 	case "":
+		// No event-name field (the CLI's camelCase payload documents none), so infer.
+		// Tool BEFORE prompt/stop: a PreToolUse payload names a tool, and reading it as
+		// a Stop would review mid-turn.
+		if p.toolInput() != nil || firstNonEmpty(p.ToolName, p.ToolNameCamel) != "" {
+			return agent.EventPreToolUse
+		}
 		if firstNonEmpty(p.StopReason, p.StopReasonCamel) == "" && p.Prompt != "" {
 			return agent.EventUserPromptSubmit
 		}
@@ -189,6 +229,14 @@ func normalizeEventName(p hookPayload) string {
 	default:
 		return name // agentStop, Stop, … — all route to the review path
 	}
+}
+
+// toolInput returns whichever dialect carried the tool arguments.
+func (p hookPayload) toolInput() map[string]any {
+	if p.ToolInput != nil {
+		return p.ToolInput
+	}
+	return p.ToolInputCamel
 }
 
 // ChangedFiles has NO transcript fallback: Copilot's transcript format is

@@ -388,6 +388,57 @@ func ForceFixedCount(findings []wire.Finding) int {
 // so the review is weaker. Customer-facing and deliberately non-technical.
 const GitlessWarning = "⚠️ no git repo here, so LeoPrevent sees less of your code (run git init for full coverage)"
 
+// HeadAnchoredWarning is appended to the banner when a repository had no turn-start
+// baseline and was reviewed against HEAD instead (vcs.BaselineInfo.HeadAnchored).
+//
+// ⚠️ IT STATES A LIMIT ON THE EVIDENCE, WHICH IS WHY IT IS NOT OPTIONAL. Such a diff is
+// a superset of the turn: it carries this turn's work AND anything already uncommitted,
+// with no way to tell them apart. So the findings may describe code the developer wrote
+// earlier, they are surfaced for them to fix now or later rather than applied in-turn,
+// and a count from this review must not be read as "introduced this turn". Saying that
+// out loud is the difference between a weaker review and a misleading one.
+// HeadAnchoredNotice is the NON-BLOCKING message for a review that ran only against
+// HEAD. It replaces the block entirely: see the warning in engine on why such a review
+// must never re-wake the agent.
+func HeadAnchoredNotice(repos []string, findings int) string {
+	if len(repos) == 0 {
+		return ""
+	}
+	noun := "finding"
+	if findings != 1 {
+		noun = "findings"
+	}
+	return "⚠️ LeoPrevent: " + itoa(findings) + " " + noun + " in " + strings.Join(repos, ", ") +
+		", which had no turn-start snapshot — so this compares against the last commit and " +
+		"may be describing work you had already left uncommitted. Nothing was changed. Open " +
+		"the repo itself for a review scoped to just this turn."
+}
+
+// HeadDeclinedNotice is the NON-BLOCKING message for a turn where several repositories
+// held work and none could be attributed, so none was reviewed. Naming them is the whole
+// point: reviewing nothing silently is the failure this replaced.
+func HeadDeclinedNotice(repos []string) string {
+	if len(repos) == 0 {
+		return ""
+	}
+	return "⚠️ LeoPrevent: nothing was reviewed this turn. " + strings.Join(repos, ", ") +
+		" all have uncommitted changes and nothing identified which one you were working " +
+		"in, so guessing would have reviewed the others' work in progress. Open the repo " +
+		"you are working in for a full review."
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }
+
+func HeadAnchoredWarning(repos []string) string {
+	if len(repos) == 0 {
+		return ""
+	}
+	return "⚠️ no turn-start snapshot for " + strings.Join(repos, ", ") +
+		", so this compares against the last commit: it may include work you had " +
+		"already left uncommitted, and those findings are for you to fix now or later " +
+		"(open the repo itself for a review scoped to just this turn)"
+}
+
 // Banner is the short, neutral console notice. Selection is not detection: it
 // names how many files are under review, never claims a violation was found —
 // that verdict only comes from the review subagent.

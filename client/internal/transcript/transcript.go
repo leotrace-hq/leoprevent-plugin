@@ -42,6 +42,27 @@ type Change struct {
 	// turn, from the git diff hunks — the positional authority for introduced-vs-
 	// pre-existing. Nil on the transcript fallback (no diff line numbers available).
 	AddedLines []int
+	// RepoDir is the LABEL qualifying FilePath when the turn spans SEVERAL repositories
+	// — the repository's basename — and "" when the file came from the repository the
+	// session started in, which is every single-repo turn. It is the prefix on
+	// FilePath, so stripping it yields the repo-root-relative path.
+	//
+	// CLIENT-INTERNAL and deliberately NOT on the wire: FilePath already carries the
+	// label as a prefix, so the server and the dashboards need nothing new.
+	RepoDir string
+	// RepoRoot is that repository's absolute root on disk.
+	//
+	// ⚠️ IT IS CARRIED, NEVER DERIVED FROM RepoDir. A repository discovered at
+	// PreToolUse can live ANYWHERE — a sibling checkout, a path typed in full — so it
+	// has no cwd-relative name, and RepoDir is only its basename. Rebuilding a root as
+	// cwd/RepoDir therefore fails in two ways: it finds nothing for a repo outside cwd
+	// (no imported context, silently), and where cwd happens to hold a SAME-NAMED
+	// project it resolves the wrong one and egresses that project's code as context —
+	// the cross-project leak the resolver's own comment says cannot happen.
+	//
+	// Empty on the transcript fallback (no git, so no root to name), where callers fall
+	// back to cwd exactly as before.
+	RepoRoot string
 }
 
 // stopHookFeedbackPrefix marks injected re-wake messages.
