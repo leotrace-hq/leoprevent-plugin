@@ -2,8 +2,11 @@ package copilot
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/agent"
 	"github.com/leotrace-hq/leoprevent-plugin/wire"
@@ -314,5 +317,235 @@ func TestEnvironmentWithoutADialectIsUnknown(t *testing.T) {
 	}
 	if env := a.Environment(agent.Event{}); env.Name != wire.EnvUnknown {
 		t.Errorf("dialect-free payload = %q, want %q", env.Name, wire.EnvUnknown)
+	}
+}
+
+// --- agent reply (LEO-156) ---
+
+// stopStdin builds a Stop payload with encoding/json rather than by concatenating into a
+// string literal. A transcript path is an OS path, and on Windows it is `C:\Users\...` —
+// pasted into a JSON literal that is an invalid `\U` escape, so the four tests below failed
+// on windows-latest only. Marshalling is the fix that cannot regress; `dialect` picks which
+// spelling, since the adapter infers the runtime from it.
+func stopStdin(t *testing.T, dialect, sid, transcriptPath string, nativeGuard bool) []byte {
+	t.Helper()
+	m := map[string]any{}
+	switch dialect {
+	case "camel": // Copilot CLI
+		m["sessionId"] = sid
+		m["stopReason"] = "end_turn"
+		if transcriptPath != "" {
+			m["transcriptPath"] = transcriptPath
+		}
+	default: // snake_case, VS Code agent mode
+		m["session_id"] = sid
+		m["hook_event_name"] = "Stop"
+		if transcriptPath != "" {
+			m["transcript_path"] = transcriptPath
+		}
+		if nativeGuard {
+			m["stop_hook_active"] = true
+		}
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// copilotTurn is a Copilot transcript spanning a block: one pre-block message, then the
+// two the agent emitted after our re-wake. The timestamps are what the parser splits on,
+// so they are set relative to the test's own clock rather than hardcoded.
+func copilotTurn(t *testing.T, before, after time.Time) string {
+	t.Helper()
+	body := `{"type":"user.message","data":{"content":"do the thing"},"timestamp":"` + before.Format(time.RFC3339Nano) + `"}
+{"type":"assistant.message","data":{"messageId":"pre","content":"Added the feature."},"timestamp":"` + before.Format(time.RFC3339Nano) + `"}
+{"type":"assistant.message","data":{"messageId":"post","content":"That is a false positive: the input is already validated upstream."},"timestamp":"` + after.Format(time.RFC3339Nano) + `"}
+`
+	p := filepath.Join(t.TempDir(), "transcript.jsonl")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// TestAgentReplyReadsThePostBlockProse walks the whole plumbing the way a real turn does:
+// the first Stop delivers a block (which stamps the guard), the second Stop parses, and
+// AgentReply resolves the reply from the marker's stamp. It is the CLI dialect, where
+// ParseEvent also CONSUMES the marker — so this is what pins reading the stamp before the
+// consume rather than inside AgentReply, which would find the file gone.
+func TestAgentReplyReadsThePostBlockProse(t *testing.T) {
+	sid := "reply-" + sanitize(t.Name())
+	clearGuard(sid)
+	t.Cleanup(func() { clearGuard(sid) })
+
+	a := New()
+	if _, err := a.ParseEvent([]byte(`{"sessionId":"` + sid + `","stopReason":"end_turn"}`)); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().UTC().Add(-time.Minute)
+	if _, err := a.DeliverReview("fix the SSRF", "banner", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	tp := copilotTurn(t, before, time.Now().UTC().Add(time.Minute))
+
+	second := New()
+	ev, err := second.ParseEvent(stopStdin(t, "camel", sid, tp, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ev.StopHookActive {
+		t.Fatal("the post-block Stop must still be the guard turn")
+	}
+	got, err := second.AgentReply(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "false positive") {
+		t.Errorf("want the agent's push-back, got %q", got)
+	}
+	if strings.Contains(got, "Added the feature") {
+		t.Errorf("pre-block commentary must not be reported as the reply: %q", got)
+	}
+}
+
+// TestAgentReplyUnderTheNativeGuard is the VS Code path, and it is the one the short-circuit
+// would have broken silently. `!ev.StopHookActive && consumeGuard(...)` never calls the
+// consume when the payload carries a native stop_hook_active, so a stamp read from inside
+// that branch would leave the VERIFIED runtime with no boundary and no reply — the exact bug
+// this ticket is about, still present but now invisible.
+func TestAgentReplyUnderTheNativeGuard(t *testing.T) {
+	sid := "native-" + sanitize(t.Name())
+	clearGuard(sid)
+	t.Cleanup(func() { clearGuard(sid) })
+
+	a := New()
+	if _, err := a.ParseEvent([]byte(`{"session_id":"` + sid + `","hook_event_name":"Stop"}`)); err != nil {
+		t.Fatal(err)
+	}
+	before := time.Now().UTC().Add(-time.Minute)
+	if _, err := a.DeliverReview("fix it", "banner", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	tp := copilotTurn(t, before, time.Now().UTC().Add(time.Minute))
+
+	second := New()
+	ev, err := second.ParseEvent(stopStdin(t, "snake", sid, tp, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := second.AgentReply(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "false positive") {
+		t.Errorf("a natively-guarded Stop must still resolve the reply, got %q", got)
+	}
+}
+
+// TestALegacyGuardMarkerStillGuardsTheLoop: an unstamped marker is what an in-flight session
+// upgraded mid-turn leaves behind. The loop guard reads PRESENCE, so it must still fire — a
+// missed guard blocks the agent forever, where a missing stamp costs that one turn its reply.
+func TestALegacyGuardMarkerStillGuardsTheLoop(t *testing.T) {
+	sid := "legacy-" + sanitize(t.Name())
+	clearGuard(sid)
+	t.Cleanup(func() { clearGuard(sid) })
+
+	p := guardPath(sid)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("1"), 0o600); err != nil { // the pre-LEO-156 content
+		t.Fatal(err)
+	}
+	tp := copilotTurn(t, time.Now().UTC().Add(-time.Minute), time.Now().UTC().Add(time.Minute))
+
+	a := New()
+	ev, err := a.ParseEvent(stopStdin(t, "camel", sid, tp, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ev.StopHookActive {
+		t.Fatal("an unstamped marker must still stop the loop")
+	}
+	got, err := a.AgentReply(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Errorf("an unstamped marker gives no boundary, so no reply may be claimed; got %q", got)
+	}
+}
+
+// TestAgentReplyWithoutABlockIsEmpty: a Stop that follows no block of ours has no marker, so
+// there is nothing to answer and nothing to anchor on. Returning the turn's prose here would
+// invent a reply to a review that never happened.
+func TestAgentReplyWithoutABlockIsEmpty(t *testing.T) {
+	sid := "noblock-" + sanitize(t.Name())
+	clearGuard(sid)
+	t.Cleanup(func() { clearGuard(sid) })
+	tp := copilotTurn(t, time.Now().UTC().Add(-time.Minute), time.Now().UTC().Add(time.Minute))
+
+	a := New()
+	ev, err := a.ParseEvent(stopStdin(t, "camel", sid, tp, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := a.AgentReply(ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Errorf("no block means no reply, got %q", got)
+	}
+}
+
+// TestArmGuardStampsATimestamp pins the marker's CONTENT, because nothing else does: the loop
+// guard only looks at presence, so armGuard could regress to writing "1" with every guard test
+// still green and only the reply quietly gone.
+func TestArmGuardStampsATimestamp(t *testing.T) {
+	sid := "stamp-" + sanitize(t.Name())
+	clearGuard(sid)
+	t.Cleanup(func() { clearGuard(sid) })
+
+	a := New()
+	if _, err := a.ParseEvent([]byte(`{"sessionId":"` + sid + `","stopReason":"end_turn"}`)); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now().UTC().Add(-time.Second)
+	if _, err := a.DeliverReview("fix it", "banner", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	at, ok := guardStamp(sid)
+	if !ok {
+		t.Fatal("DeliverReview must stamp the marker with the delivery time")
+	}
+	if at.Before(start) || at.After(time.Now().UTC().Add(time.Second)) {
+		t.Errorf("stamp %s is not the delivery time", at)
+	}
+}
+
+// TestStopStdinHandlesAWindowsPath pins the reason stopStdin exists. The four tests above
+// originally built their payload by concatenating the transcript path into a JSON string
+// literal, which is fine for a POSIX temp path and invalid JSON for a Windows one
+// (`C:\Users\...` opens a `\U` escape) — so they passed on macOS and Linux and failed on
+// windows-latest only, in CI, after review. Marshalling is the fix; this asserts it, in both
+// stdin dialects, against a path shaped like the runner's real one.
+func TestStopStdinHandlesAWindowsPath(t *testing.T) {
+	const win = `C:\Users\runneradmin\AppData\Local\Temp\TestAgentReply\transcript.jsonl`
+	for _, dialect := range []string{"camel", "snake"} {
+		b := stopStdin(t, dialect, "sid-1", win, false)
+		var back map[string]any
+		if err := json.Unmarshal(b, &back); err != nil {
+			t.Fatalf("%s: payload is not valid JSON: %v", dialect, err)
+		}
+		ev, err := New().ParseEvent(b)
+		if err != nil {
+			t.Fatalf("%s: ParseEvent: %v", dialect, err)
+		}
+		if ev.TranscriptPath != win {
+			t.Errorf("%s: path came back mangled: %q", dialect, ev.TranscriptPath)
+		}
 	}
 }

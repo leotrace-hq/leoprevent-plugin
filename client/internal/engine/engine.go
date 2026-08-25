@@ -486,10 +486,10 @@ func shipTelemetry(a agent.Agent, r Reviewer, ev agent.Event, reason string, cha
 // false-positive signal the field exists to collect. The adapter reads the whole
 // post-re-wake segment out of the transcript instead.
 //
-// Fail-open like every other analytics read: a parse error or an adapter with no
-// transcript parser (copilot) leaves the previous behaviour in place rather than
-// shipping nothing. An empty parse is treated as a miss for the same reason —
-// "" would blank a field that had a usable value.
+// Fail-open like every other analytics read: a parse error, or an adapter that could
+// not locate its re-wake boundary, leaves the previous behaviour in place rather than
+// shipping nothing. An empty parse is treated as a miss for the same reason — "" would
+// blank a field that had a usable value.
 func agentReply(a agent.Agent, ev agent.Event, log *slog.Logger) string {
 	reply, err := a.AgentReply(ev)
 	if err != nil {

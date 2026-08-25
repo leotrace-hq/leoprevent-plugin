@@ -26,11 +26,12 @@
 // review; a missed guard would loop the agent forever — so the marker always
 // errs toward "this Stop is the guard turn".
 //
-// Changed-file discovery is the git-baseline path ONLY (engine → vcs). Copilot's
-// transcript format is undocumented, so there is no transcript fallback and no
-// TurnMeta yet: outside a git repo the review is skipped (fail open), and turn
-// analytics are zero until the format is reverse-engineered. Both are deliberate
-// gaps, not oversights.
+// Changed-file discovery is the git-baseline path ONLY (engine → vcs): outside a git
+// repo the review is skipped (fail open). Copilot's transcript format is undocumented,
+// so what we read out of it is only what has been confirmed by inspection — the prose
+// (see AgentReply), not the tool calls a changed-file fallback would need. Turn
+// analytics are partial for the same reason (see TurnMeta). Deliberate gaps, not
+// oversights, and narrowing rather than fixed: LEO-156 closed the agent reply.
 package copilot
 
 import (
@@ -56,6 +57,15 @@ type Adapter struct {
 	// only knowable while the payload is in hand, and the seam hands the later calls
 	// an Event, not the raw bytes.
 	environment string
+	// rewakeAt is when we delivered the block this Stop is the guard turn for, read
+	// off the guard marker at ParseEvent. It is AgentReply's boundary (see there):
+	// Copilot records no injected message, so the delivery time is the only thing
+	// separating the agent's reply from its own pre-block commentary. Zero when this
+	// Stop follows no block of ours, or when the marker predates the stamp.
+	//
+	// On the struct for a THIRD reason beyond sessionID's: ParseEvent CONSUMES the
+	// marker on the CLI dialect, so by the time AgentReply runs the file may be gone.
+	rewakeAt time.Time
 }
 
 // New returns a Copilot adapter.
@@ -109,7 +119,14 @@ func (a *Adapter) ParseEvent(stdin []byte) (agent.Event, error) {
 		clearGuard(a.sessionID)
 		return ev, nil
 	}
-	// Stop: honor a native stop_hook_active (VS Code documents one); otherwise the
+	// Stop: read the marker's block-delivery stamp BEFORE anything can remove it, and
+	// unconditionally — the consume below is short-circuited by a native
+	// stop_hook_active, so a VS Code turn would otherwise never look at the file at all
+	// and AgentReply would have no boundary on the one runtime that is verified.
+	if at, ok := guardStamp(a.sessionID); ok {
+		a.rewakeAt = at
+	}
+	// honor a native stop_hook_active (VS Code documents one); otherwise the
 	// self-managed marker from the block we delivered last invocation IS the guard.
 	if !ev.StopHookActive && consumeGuard(a.sessionID) {
 		ev.StopHookActive = true
@@ -203,14 +220,25 @@ func (*Adapter) TurnMeta(ev agent.Event) (agent.TurnMeta, error) {
 	}, nil
 }
 
-// AgentReply is NOT recovered for Copilot, so the engine falls back to the Stop
-// stdin's last_assistant_message.
+// AgentReply returns the agent's prose after our re-wake, read out of the transcript
+// the hook handed us — transcript.ParseCopilotAgentReply, anchored on when we
+// delivered the block (a.rewakeAt, off the guard marker).
 //
-// Same gap as ChangedFiles and the turn metadata: Copilot's transcript format is
-// undocumented and the chat-session file it does write is flushed AFTER the Stop
-// hook reads it (see TurnMeta). Returning "" is the honest answer — a reply parsed
-// out of a half-written file would be worse than the truncated-but-real fallback.
-func (*Adapter) AgentReply(agent.Event) (string, error) { return "", nil }
+// ⚠️ THE EARLIER "NOT RECOVERED FOR COPILOT" BEHAVIOUR NAMED THE WRONG FILE, which is
+// why this looked impossible. The write-order race is real but belongs to
+// chatSessions, where the MODEL lives (see TurnMeta); the transcript is an
+// append-order journal whose assistant.message records carry the prose and land as
+// they happen. So the reply was on disk all along and simply unread, which surfaced as
+// every Copilot outcome recording an agent that never replied — on a declined fix, the
+// one field that says why the flaw is still open.
+//
+// Best-effort per the seam contract: no marker (so no boundary), an unreadable
+// transcript or a format change all yield "" and the engine falls back to
+// last_assistant_message, which Copilot does not populate — i.e. exactly the previous
+// behaviour, never worse.
+func (a *Adapter) AgentReply(ev agent.Event) (string, error) {
+	return transcript.ParseCopilotAgentReply(ev.TranscriptPath, a.rewakeAt)
+}
 
 // rewakeDual is the block output in BOTH dialects at once: the Copilot CLI (GA)
 // reads the top-level decision/reason (Claude's contract); VS Code agent mode
@@ -276,7 +304,14 @@ func guardPath(sessionID string) string {
 	return filepath.Join(os.TempDir(), "leoprevent-copilot-guard", sanitize(sessionID))
 }
 
-// armGuard records that a block was just delivered for this session. Best-effort.
+// armGuard records that a block was just delivered for this session, stamping WHEN.
+// Best-effort.
+//
+// The content is an RFC3339 delivery time rather than the old "1" because AgentReply
+// needs that instant as its boundary and nothing else in the system knows it. The
+// guard's own semantics are unchanged and deliberately do not read it: PRESENCE is the
+// guard (see consumeGuard), so a marker left by an older build still stops the loop and
+// only costs that turn its reply.
 func armGuard(sessionID string) {
 	cleanupStale()
 	if sessionID == "" {
@@ -286,12 +321,40 @@ func armGuard(sessionID string) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return
 	}
-	_ = os.WriteFile(p, []byte("1"), 0o600)
+	_ = os.WriteFile(p, []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o600)
+}
+
+// guardStamp reports when the block for this session was delivered, from the marker's
+// contents. It does NOT remove the marker — the loop guard owns that lifecycle, and
+// reading the stamp must not change which turn gets guarded.
+//
+// A missing marker, an unreadable one, or contents that are not a timestamp (an older
+// build's "1") all report false, which leaves AgentReply with no boundary and so no
+// reply. That is the direction to fail in: a wrong boundary would ship the agent's
+// pre-block commentary as its answer to a finding it had not yet seen.
+func guardStamp(sessionID string) (time.Time, bool) {
+	if sessionID == "" {
+		return time.Time{}, false
+	}
+	b, err := os.ReadFile(guardPath(sessionID)) //nolint:gosec // our own scratch path
+	if err != nil {
+		return time.Time{}, false
+	}
+	at, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(b)))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return at, true
 }
 
 // consumeGuard reports whether a marker exists for this session, removing it
 // (consume-once, like outcome.Take). An empty sessionID or a stat error reads as
 // "no marker".
+//
+// PRESENCE ONLY — it never reads the contents. armGuard now stamps a delivery time in
+// there for AgentReply, and the guard must not start depending on that parsing: an
+// unstamped or corrupt marker has to keep stopping the loop, because a missed guard
+// blocks the agent forever while a missing stamp costs one reply.
 func consumeGuard(sessionID string) bool {
 	cleanupStale()
 	if sessionID == "" {

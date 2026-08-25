@@ -131,12 +131,16 @@ type Agent interface {
 	// MESSAGE, and a turn is not one message: an agent that interleaves tool calls
 	// with text emits several, so the reasoning sits in an earlier one and the last
 	// is a sign-off. Where the re-wake boundary lives is agent-specific (Claude
-	// injects "Stop hook feedback:", Codex surfaces our prompt as a user message),
-	// which is why this is behind the seam rather than in the engine.
+	// injects "Stop hook feedback:", Codex surfaces our prompt as a user message,
+	// and Copilot logs no injection at all so its adapter anchors on the moment the
+	// block was delivered), which is why this is behind the seam rather than in the
+	// engine.
 	//
 	// Best-effort, same contract as TurnMeta: an empty string means "could not
-	// read it", and the engine falls back to LastAssistantMessage. An adapter with
-	// no transcript parser (copilot) returns "" unconditionally.
+	// read it", and the engine falls back to LastAssistantMessage. An adapter that
+	// cannot locate the boundary returns "" rather than guessing at one — reporting
+	// the agent's pre-block commentary as its answer to a finding it had not been
+	// shown is worse than recording no answer.
 	AgentReply(ev Event) (string, error)
 
 	// DeliverReview wraps the review prompt as this agent's re-wake output

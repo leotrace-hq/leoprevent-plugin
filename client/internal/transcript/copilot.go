@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // ParseCopilotTurnMeta recovers the coding agent's model + token usage for a VS Code
@@ -166,4 +168,121 @@ func vscodeWorkspaceStorageRoots() []string {
 func fileExists(p string) bool {
 	info, err := os.Stat(p)
 	return err == nil && !info.IsDir()
+}
+
+// ParseCopilotAgentReply returns the assistant prose a VS Code Copilot turn emitted
+// AFTER we delivered a block at `since` — the agent's reaction to leoprevent, for
+// /outcome's agent_response.
+//
+// ⚠️ THE ANCHOR IS A TIMESTAMP, NOT A MARKER, AND IT HAS TO BE. Claude splits on the
+// injected "Stop hook feedback:" message, which is the right boundary because it is the
+// moment we spoke. Copilot records NO such message: a whole session that blocked and
+// remediated carries exactly ONE user.message (the developer's own prompt), verified by
+// inspection of a real transcript. So there is nothing in the file to split on, and the
+// block-delivery time is the same boundary named from the other side — text after it is a
+// response to what we told it, text before it is the agent narrating its own work.
+//
+// The alternative anchors were both worse. A TIMING GAP between assistant.turn_end and
+// the next assistant.turn_start does mark the review (23s on the sample, against
+// same-millisecond gaps everywhere else) but a slow tool call looks identical, and the
+// failure is a confidently mis-split reply. Shipping the WHOLE turn's prose needs no
+// anchor and never misses, at the cost of reporting the agent's pre-block commentary as
+// if it were a reply to a finding it had not yet been shown.
+//
+// ⚠️ THIS IS THE TRANSCRIPT THE HOOK IS HANDED, NOT chatSessions, so the write-order race
+// documented on ParseCopilotTurnMeta does NOT apply. The two files are written for
+// different reasons: the transcript is an append-order journal (each record's timestamp
+// matches the event that produced it), while chatSessions is a persistence snapshot VS Code
+// flushes when it gets round to it — which is why the MODEL is racy and the prose is not.
+// The records are session.start / user.message / assistant.message / assistant.turn_* /
+// tool.*; the prose is assistant.message's data.content.
+//
+// Best-effort by contract, exactly like the Claude and Codex parsers: a zero `since`, an
+// unreadable file, a format change or no post-block message all yield "" so the engine
+// falls back to the Stop stdin's last_assistant_message (which Copilot does not populate,
+// so the field simply stays empty as it did before this existed). A miss must never cost
+// more than the reply.
+func ParseCopilotAgentReply(transcriptPath string, since time.Time) (string, error) {
+	// No anchor means we cannot tell a reply from the agent's own commentary, and
+	// guessing is the one outcome this parser must not produce.
+	if since.IsZero() || transcriptPath == "" {
+		return "", nil
+	}
+	// The path comes from the local coding agent's hook stdin, in a process that agent
+	// spawned on the developer's own machine as the developer. Anyone able to write that
+	// stdin can already run code as this user, so confining the read buys nothing — and
+	// the obvious confinement (a prefix check against os.UserConfigDir) would silently
+	// return no reply on a portable, Insiders, remote or --user-data-dir VS Code, which is
+	// the exact failure this parser exists to remove. Same read, same reasoning, as
+	// ParseCopilotTurnMeta above and the Claude and Codex reply parsers.
+	data, err := os.ReadFile(transcriptPath) //nolint:gosec // local agent's own hook stdin; see above
+	if err != nil {
+		return "", err
+	}
+
+	var order []string
+	text := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var r copilotRecord
+		if json.Unmarshal([]byte(line), &r) != nil {
+			continue // tolerate a garbled or unknown line, same as every sibling parser
+		}
+		if r.Type != "assistant.message" {
+			continue
+		}
+		// A record we cannot place in time cannot be attributed to either side of the
+		// block, so it is dropped rather than guessed at.
+		ts, err := time.Parse(time.RFC3339, r.Timestamp)
+		if err != nil || !ts.After(since) {
+			continue
+		}
+		// content only. data.toolRequests are the agent's ACTIONS, already captured as
+		// the before/after code, and their arguments carry whole file bodies that would
+		// swamp the prose — the same text-only rule assistantTextAfter applies to Claude's
+		// tool_use blocks.
+		body := strings.TrimSpace(r.Data.Content)
+		if body == "" {
+			continue
+		}
+		// Deduped by message id, last-wins, ordered by first appearance — the resolution
+		// assistantTextAfter uses, and for its reason: a partial is a PREFIX of the final,
+		// so first-wins ships a half-written sentence and keeping every copy ships the
+		// reply twice. Copilot was NOT observed to repeat a messageId (10 records, 10 ids),
+		// so this is insurance rather than a fix; it costs nothing and keeps the two
+		// parsers in the package answering the same question the same way. A record with
+		// no id is keyed by position and always kept.
+		key := r.Data.MessageID
+		if key == "" {
+			key = "\x00pos" + strconv.Itoa(len(order))
+		}
+		if _, seen := text[key]; !seen {
+			order = append(order, key)
+		}
+		text[key] = body
+	}
+
+	var out strings.Builder
+	for _, k := range order {
+		if out.Len() > 0 {
+			out.WriteString("\n\n")
+		}
+		out.WriteString(text[k])
+	}
+	return capReply(out.String()), nil
+}
+
+// copilotRecord is the slice of a Copilot transcript record this parser reads. Declared
+// narrowly on purpose: the format is undocumented VS Code internals, so binding only the
+// three fields we need means an added or renamed sibling field cannot break the decode.
+type copilotRecord struct {
+	Type      string `json:"type"`
+	Timestamp string `json:"timestamp"`
+	Data      struct {
+		MessageID string `json:"messageId"`
+		Content   string `json:"content"`
+	} `json:"data"`
 }
