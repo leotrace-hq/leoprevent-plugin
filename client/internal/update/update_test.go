@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/leotrace-hq/leoprevent-plugin/wire"
 )
 
 func TestParseAndLess(t *testing.T) {
@@ -221,11 +223,15 @@ func TestRecordLatestIgnoresGarbage(t *testing.T) {
 }
 
 func TestMessagePerAgent(t *testing.T) {
-	claude := Message("claude", "0.1.4", "0.1.5")
+	claude := Message("claude", wire.EnvClaudeTerminal, "0.1.4", "0.1.5")
 	if !strings.Contains(claude, "/plugin marketplace update leotrace") || !strings.Contains(claude, "0.1.5") {
 		t.Errorf("claude message missing update command or version: %q", claude)
 	}
-	codex := Message("codex", "0.1.4", "0.1.5")
+	desktop := Message("claude", wire.EnvClaudeDesktop, "0.1.4", "0.1.5")
+	if !strings.Contains(desktop, "Customize → Plugins → Browse → Code") || strings.Contains(desktop, "/plugin") {
+		t.Errorf("Claude Desktop message missing UI update path or contains CLI command: %q", desktop)
+	}
+	codex := Message("codex", wire.EnvCodexCLI, "0.1.4", "0.1.5")
 	if !strings.Contains(codex, "codex plugin marketplace upgrade") {
 		t.Errorf("codex message missing codex command: %q", codex)
 	}
@@ -238,7 +244,7 @@ func TestMessagePerAgent(t *testing.T) {
 // chrome so it doesn't read as part of the answer. Without any of these the injected
 // context is either ignored or indistinguishable from the agent's own prose.
 func TestContextMessageInstructsRelay(t *testing.T) {
-	got := ContextMessage("claude", "0.2.11", "0.2.12")
+	got := ContextMessage("claude", wire.EnvClaudeTerminal, "0.2.11", "0.2.12")
 	if !strings.HasPrefix(got, "Begin your reply") {
 		t.Errorf("ContextMessage must OPEN with the relay instruction (a buried one gets ignored); got %q", got)
 	}
@@ -253,8 +259,12 @@ func TestContextMessageInstructsRelay(t *testing.T) {
 		}
 	}
 	// The codex variant must carry codex's command, not Claude's.
-	if cx := ContextMessage("codex", "0.2.11", "0.2.12"); !strings.Contains(cx, "codex plugin marketplace upgrade") {
+	if cx := ContextMessage("codex", wire.EnvCodexCLI, "0.2.11", "0.2.12"); !strings.Contains(cx, "codex plugin marketplace upgrade") {
 		t.Errorf("codex ContextMessage missing codex command: %q", cx)
+	}
+	desktop := ContextMessage("claude", wire.EnvClaudeDesktop, "0.2.11", "0.2.12")
+	if !strings.Contains(desktop, "Check for updates") || strings.Contains(desktop, "/plugin") {
+		t.Errorf("Claude Desktop ContextMessage missing UI update path or contains CLI command: %q", desktop)
 	}
 }
 

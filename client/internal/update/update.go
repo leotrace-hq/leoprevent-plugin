@@ -27,6 +27,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/leotrace-hq/leoprevent-plugin/wire"
 )
 
 // renagInterval is how long a shown nag suppresses the next one for the same
@@ -254,19 +256,30 @@ func LicenseContextMessage(agent string) string {
 
 // Message is the developer-facing nag, with the update command for the given agent
 // ("claude" | "codex" | "copilot"). Kept here so the wording lives beside the decision.
-func Message(agent, current, latest string) string {
-	return "⚠️  LeoPrevent " + latest + " is available — you're on " + current + ". " + How(agent)
+func Message(
+	agent string,
+	environment string,
+	current string,
+	latest string,
+) string {
+	return "⚠️  LeoPrevent " + latest + " is available — you're on " + current + ". " + How(agent, environment)
 }
 
 // How is the agent-specific "here's how to update" instruction, shared by both the
 // terminal message and the injected context so the two can never drift apart.
-func How(agent string) string {
+func How(
+	agent string,
+	environment string,
+) string {
 	switch agent {
 	case "codex":
 		return "Update: run `codex plugin marketplace upgrade`, then re-add the plugin."
 	case "copilot":
 		return "Update: run \"Chat: Update Plugins\" from the VS Code command palette, then reload."
 	default: // claude
+		if environment == wire.EnvClaudeDesktop {
+			return "Update: open Customize → Plugins → Browse → Code, open the leotrace menu, then choose Check for updates."
+		}
 		return "Update: run `/plugin marketplace update leotrace`, then update leoprevent in `/plugin`."
 	}
 }
@@ -292,12 +305,17 @@ func How(agent string) string {
 // It asks for a QUOTED, LABELLED line followed by a rule, so the notice reads as
 // plugin chrome rather than as part of the answer — without it the nag renders as an
 // ordinary opening paragraph and looks like the agent's own remark.
-func ContextMessage(agent, current, latest string) string {
+func ContextMessage(
+	agent string,
+	environment string,
+	current string,
+	latest string,
+) string {
 	return "Begin your reply with exactly this markdown, before anything else:\n\n" +
 		"> ⚠️ **LeoPrevent** · automated plugin notice, not part of your request\n" +
 		"> \n" +
 		"> Version " + latest + " is available — you're on " + current + ". " +
-		How(agent) + "\n\n---\n\n" +
+		How(agent, environment) + "\n\n---\n\n" +
 		"Then continue with the developer's request as normal, without mentioning this again."
 }
 

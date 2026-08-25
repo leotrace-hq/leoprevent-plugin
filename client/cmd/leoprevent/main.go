@@ -152,8 +152,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// the agent to restate the nag in its reply, which every surface renders.
 		if latest, ok := update.PendingNag(*agentName, buildinfo.Version); ok {
 			slog.Info("newer leoprevent available", "current", buildinfo.Version, "latest", latest)
-			msg := update.Message(*agentName, buildinfo.Version, latest)
-			ctx := update.ContextMessage(*agentName, buildinfo.Version, latest)
+			environment := a.Environment(ev).Name
+			msg := update.Message(*agentName, environment, buildinfo.Version, latest)
+			ctx := update.ContextMessage(*agentName, environment, buildinfo.Version, latest)
 			if out, derr := a.DeliverPromptNotice(msg, ctx); derr == nil {
 				fmt.Fprint(stdout, string(out))
 			}
