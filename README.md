@@ -65,8 +65,12 @@ Set your license key (once), **after** the restart above:
 (Before the restart this reads as an unknown command, because the plugin isn't loaded yet. If your
 agent won't run it, set the key by hand. See [Set your license key](#set-your-license-key) below.)
 
-To update: open the **`+`** menu → **Plugins** → **Manage plugins**, go to **leoprevent**, and update
-it. Your license key survives the update.
+To update manually: open **Customize** → **Plugins** → **Browse** → **Code**, open the `leotrace`
+three-dots menu, and choose **Check for updates**. Your license key survives the update.
+
+Third-party marketplaces do not update automatically by default. To receive future updates in the
+background, enable auto-update from that same `leotrace` menu. Claude checks after a session starts;
+an updated plugin is used by the next session. The background check can take up to ten minutes.
 
 ### On the web (claude.ai/code)
 

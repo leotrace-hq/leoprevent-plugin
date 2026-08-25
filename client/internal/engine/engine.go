@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -178,8 +179,45 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 	}
 	if len(changes) == 0 {
 		log.Debug("no file edits this turn, allowing stop")
-		shipTelemetry(a, r, ev, wire.TelemetryNoChange, 0, log, now)
-		return 0 // nothing changed → silent (telemetry still reports the turn's cost)
+		shipTelemetry(a, r, ev, wire.TelemetryNoChange, 0, usedGit, baselineSkip, log, now)
+		// A turn with no changes is normally just a question, and stays silent. But when
+		// the git path was SKIPPED, "no changes" may instead mean we could not SEE them:
+		// on an adapter with no transcript fallback (copilot) an empty change set is
+		// Several repositories held work from this turn and nothing said which one it was
+		// about, so none was reviewed. That is a MORE specific answer than the generic
+		// no-baseline notice and it names the folder to open, so it wins — and it is not
+		// throttled per session, because which repositories are in play changes turn to
+		// turn and a stale suppression would leave the developer with no explanation at
+		// all for the rest of the session.
+		if len(baseInfo.HeadDeclined) > 0 {
+			log.Warn("several repos hold this turn's work and none was named — nothing reviewed",
+				"repos", strings.Join(baseInfo.HeadDeclined, ", "))
+			if out, derr := a.DeliverNotice(review.HeadDeclinedNotice(baseInfo.HeadDeclined)); derr == nil {
+				fmt.Fprint(stdout, string(out))
+			}
+			return 0
+		}
+		// ⚠️ NO GENERIC "no git snapshot" NOTICE ANY MORE — the reason it existed is now
+		// covered, and it had become noise on every quiet turn.
+		//
+		// It was added because an unreviewed turn was indistinguishable from a quiet one:
+		// a pilot on an agent with no transcript fallback spent a weekend at zero coverage
+		// with no signal anywhere. What closed that: PreToolUse discovery resolves the
+		// repo behind a named path or a shell command, and the Stop-time fallback covers
+		// what nothing named — so a write we could not see now produces either a review or
+		// the specific HeadDeclined notice above, both of which say more than this did.
+		// What remained was a turn where nothing was written at all, where "nothing was
+		// reviewed" is true, unactionable and printed on top of the developer's work.
+		//
+		// The WARN below stays: it is the operator's record in client.log, and it is how a
+		// genuinely unseen write is still diagnosable after the fact. Only the terminal
+		// message is gone. RESIDUAL GAP, deliberately accepted: a write into a repo more
+		// than two levels below cwd, or outside it entirely, that nothing named — silent.
+		if !usedGit && baselineSkip != vcs.SkipNoCwdOrSession {
+			log.Warn("no git baseline and no changes discovered — this turn went unreviewed",
+				"reason", string(baselineSkip), "cwd", ev.Cwd)
+		}
+		return 0 // nothing changed → telemetry still reports the turn's cost
 	}
 
 	// Inert gate: suppress only PROVABLY harmless changes (pure prose, or diffs
@@ -191,7 +229,7 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 	log.Info("changed files", "changed", len(changes), "reviewable", len(reviewable))
 	if len(reviewable) == 0 {
 		log.Debug("all changes inert, allowing stop")
-		shipTelemetry(a, r, ev, wire.TelemetryInert, len(changes), log, now)
+		shipTelemetry(a, r, ev, wire.TelemetryInert, len(changes), usedGit, baselineSkip, log, now)
 		return 0
 	}
 
@@ -205,11 +243,23 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 	// detection) that is otherwise indistinguishable server-side, so without this a
 	// developer silently stuck on it looks exactly like one who is fine.
 	meta.GitBaseline, meta.BaselineSkip = usedGit, string(baselineSkip)
+	// turnMeta resolves Repo from cwd, which names nothing when cwd is a folder
+	// HOLDING repositories rather than being one. Name the repository that actually
+	// changed instead — even in a workspace the ordinary turn touches one project — so
+	// these turns keep the per-app analytics dimension they used to lose entirely.
+	// Silent when several changed: see soleRepoOrigin.
+	if meta.Repo == "" {
+		meta.Repo = soleRepoOrigin(ev.Cwd, changes)
+	}
 	// Where the tree started, and how many files were excluded as already-published
 	// (a mid-turn checkout/pull/merge imports somebody else's merged commits). The
 	// second is the one worth watching: it is the only step that removes code from
 	// review, so an over-subtraction would otherwise just look like a quiet turn.
 	meta.BaselineHead, meta.ImportedDropped = baseInfo.Head, baseInfo.ImportedDropped
+	// A HEAD-anchored repo is weaker evidence than a baselined one, so the fact travels
+	// with the turn rather than staying in the client log: the server records it on the
+	// review event and the internal console flags the row (see wire.TurnMeta).
+	meta.HeadAnchoredRepos = baseInfo.HeadAnchored
 
 	// Cross-turn pre-existing resolution: if a PRIOR block surfaced pre-existing vulns
 	// the dev hadn't fixed, and this turn touches those files, re-judge just those rules
@@ -255,13 +305,32 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 		banner += " " + review.GitlessWarning
 	}
 	// Pass the judged findings so an adapter that states the notice can say whether
-	// anything was actually FIXED: only introduced findings are force-fixed; the rest
+	// anything was actually fixed: only introduced findings are applied in-turn; the rest
 	// are surfaced. res.Pending is nil on the local tier (the agent's own model judges,
 	// so the client never sees a finding list) — the notice then falls back to the
 	// generic wording.
 	var findings []wire.Finding
 	if res.Pending != nil {
 		findings = res.Pending.Findings
+	}
+	// ⚠️ A HEAD-ANCHORED REVIEW NEVER BLOCKS. It exists because nothing named a path, so
+	// its diff is a superset of the turn and its findings may be describing work the
+	// developer left uncommitted earlier. Re-waking the agent over that spends the
+	// forcing function on somebody else's work in progress: measured live 2026-08-25, a
+	// turn that wrote NOTHING was blocked for 71s over ten findings from four unrelated
+	// checkouts. A false block is the one cost this product cannot pay, so these are
+	// surfaced as a NON-BLOCKING notice and the stop proceeds.
+	//
+	// The two cases are mutually exclusive by construction: the fallback only runs when
+	// the turn produced no changes at all, so a turn is either wholly baselined or wholly
+	// HEAD-anchored, and this can never suppress a block a baselined finding earned.
+	if len(baseInfo.HeadAnchored) > 0 {
+		log.Info("HEAD-anchored review: surfacing without a block",
+			"repos", strings.Join(baseInfo.HeadAnchored, ", "), "findings", len(findings))
+		if out, derr := a.DeliverNotice(review.HeadAnchoredNotice(baseInfo.HeadAnchored, len(findings))); derr == nil {
+			fmt.Fprint(stdout, string(out))
+		}
+		return 0
 	}
 	out, err := a.DeliverReview(res.Prompt, banner, len(reviewable), findings)
 	if err != nil {
@@ -468,8 +537,16 @@ func fileFromLocation(loc string) string {
 // so analytics never delays or breaks the fail-open stop. Fires ONLY on a
 // no-review exit — reviewed turns already carry their meta on /review, so this
 // never double-counts.
-func shipTelemetry(a agent.Agent, r Reviewer, ev agent.Event, reason string, changedFiles int, log *slog.Logger, now time.Time) {
+// ⚠️ IT MUST CARRY THE BASELINE FACTS, and they are passed IN rather than read off
+// turnMeta: the review path sets them further down Run (after both calls to this), so
+// a telemetry meta built from turnMeta alone reports neither. That is not cosmetic —
+// these are the NO-REVIEW turns, i.e. exactly the ones where "why was there nothing to
+// review" is the whole question, and the field that answers it was blank on every one
+// of them. A pilot ran a weekend of unreviewed turns whose events could not say why.
+func shipTelemetry(a agent.Agent, r Reviewer, ev agent.Event, reason string, changedFiles int,
+	usedGit bool, baselineSkip vcs.SkipReason, log *slog.Logger, now time.Time) {
 	meta := turnMeta(a, ev, log, now)
+	meta.GitBaseline, meta.BaselineSkip = usedGit, string(baselineSkip)
 	if err := r.ShipTelemetry(meta, reason, changedFiles); err != nil {
 		log.Debug("ship telemetry failed (best-effort, ignoring)", "reason", reason, "err", err.Error())
 	}
@@ -486,10 +563,10 @@ func shipTelemetry(a agent.Agent, r Reviewer, ev agent.Event, reason string, cha
 // false-positive signal the field exists to collect. The adapter reads the whole
 // post-re-wake segment out of the transcript instead.
 //
-// Fail-open like every other analytics read: a parse error or an adapter with no
-// transcript parser (copilot) leaves the previous behaviour in place rather than
-// shipping nothing. An empty parse is treated as a miss for the same reason —
-// "" would blank a field that had a usable value.
+// Fail-open like every other analytics read: a parse error, or an adapter that could
+// not locate its re-wake boundary, leaves the previous behaviour in place rather than
+// shipping nothing. An empty parse is treated as a miss for the same reason — "" would
+// blank a field that had a usable value.
 func agentReply(a agent.Agent, ev agent.Event, log *slog.Logger) string {
 	reply, err := a.AgentReply(ev)
 	if err != nil {
@@ -574,7 +651,12 @@ func changedFiles(a agent.Agent, ev agent.Event, log *slog.Logger) ([]transcript
 	log.Info("DEGRADED review: no git baseline, using transcript fallback",
 		"reason", string(skip), "cwd", ev.Cwd)
 	changes, err = a.ChangedFiles(ev)
-	return dropSecrets(changes, log), false, skip, vcs.BaselineInfo{}, err
+	// ⚠️ CARRY THE DECLINED REPOSITORIES THROUGH THE SKIP PATH. Everything else on
+	// BaselineInfo describes a diff that did happen, so this branch discarded the whole
+	// struct — but HeadDeclined is the reason there is no diff, and dropping it left the
+	// developer with the generic "no git snapshot" notice on exactly the turn where we
+	// knew which folders were in play and which one to open.
+	return dropSecrets(changes, log), false, skip, vcs.BaselineInfo{HeadDeclined: info.HeadDeclined}, err
 }
 
 // dropSecrets removes secret/credential files (private keys, .env, credential
@@ -592,4 +674,29 @@ func dropSecrets(changes []transcript.Change, log *slog.Logger) []transcript.Cha
 		out = append(out, c)
 	}
 	return out
+}
+
+// soleRepoOrigin names the repository a workspace turn changed, or "" when it changed
+// several (or none, or the origin cannot be resolved).
+//
+// ⚠️ IT REFUSES TO GUESS WHEN A TURN SPANS REPOSITORIES. TurnMeta.Repo is the "app"
+// dimension every dashboard groups by, and it holds ONE value; picking whichever
+// project happened to be walked first would file a cross-project turn under an
+// arbitrary one of them, which is worse than the blank these turns carried before —
+// a wrong attribution reads as fact, a blank reads as unknown. Same discipline as
+// BaselineHead, which is recorded only when there is one commit to name.
+func soleRepoOrigin(cwd string, changes []transcript.Change) string {
+	if cwd == "" || len(changes) == 0 {
+		return ""
+	}
+	rel := changes[0].RepoDir
+	for _, c := range changes[1:] {
+		if c.RepoDir != rel {
+			return ""
+		}
+	}
+	if rel == "" {
+		return "" // cwd IS the repo: turnMeta already resolved it (or it genuinely has none)
+	}
+	return vcs.RepoOrigin(filepath.Join(cwd, filepath.FromSlash(rel)))
 }

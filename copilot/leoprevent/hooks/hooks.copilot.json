@@ -9,6 +9,14 @@
         "timeoutSec": 30
       }
     ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "\"${PLUGIN_ROOT}/bin/leoprevent-plugin\" --agent=copilot",
+        "powershell": "& \"${PLUGIN_ROOT}\\bin\\leoprevent-plugin.exe\" --agent=copilot",
+        "timeoutSec": 10
+      }
+    ],
     "agentStop": [
       {
         "type": "command",
