@@ -781,3 +781,70 @@ func TestWorkInARepoDuringTheTurnIsStillReviewed(t *testing.T) {
 		t.Errorf("changes=%v HeadAnchored=%v, want one of each", paths(changes), info.HeadAnchored)
 	}
 }
+
+// TestADiscoveredRepoGetsAFreshBaselineEachTurn is the regression on a shipped bug: the
+// plugin flagged something on EVERY turn, including turns that changed nothing.
+//
+// A baseline means "the state at the start of THIS turn". The cwd repository gets that by
+// being re-captured at every UserPromptSubmit. A discovered repository had no refresh:
+// RecordEditedRepo skips a root it has already recorded, and nothing cleared the
+// directory, so its guard's "already recorded this turn" was really "this SESSION" and
+// the baseline froze at first discovery. Everything the agent did in turn 1 then stayed
+// in the diff for turns 2, 3, 4.
+//
+// ⚠️ NOTE WHAT THIS PINS: a TRACKED modification, not an untracked file. The bug was first
+// diagnosed as a stale untracked-hash snapshot, which is one symptom of the freeze rather
+// than the cause — pinning only the untracked case would leave the real fault open.
+func TestADiscoveredRepoGetsAFreshBaselineEachTurn(t *testing.T) {
+	needGit(t)
+	base := t.TempDir()
+	ws := filepath.Join(base, "ws")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repo := seedRepoAt(t, filepath.Join(ws, "proj"), "app.py", "x = 1\n")
+	s := session(t, "vcs-fresh-each-turn")
+
+	// Turn 1: discover the repo and change a TRACKED file.
+	if err := CaptureBaseline(ws, s); err != nil {
+		t.Fatal(err)
+	}
+	edits(t, repo, "app.py", s, ws)
+	appendTo(t, filepath.Join(repo, "app.py"), "import requests\n")
+	if changes, ok, _, _, err := ChangedFilesWithInfo(ws, s); err != nil || !ok || len(changes) != 1 {
+		t.Fatalf("turn 1: expected the one changed file, got %v (ok=%v err=%v)", paths(changes), ok, err)
+	}
+
+	// Turn 2: a new prompt, and the agent touches nothing at all.
+	if err := CaptureBaseline(ws, s); err != nil {
+		t.Fatal(err)
+	}
+	changes, ok, _, _, err := ChangedFilesWithInfo(ws, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("turn 2 changed nothing but re-reviewed %v — the discovered repo's baseline "+
+			"is frozen at first discovery instead of being refreshed each turn", paths(changes))
+	}
+	_ = ok
+
+	// Turn 3: touch it again. Only THIS turn's change may be reviewed, and turn 1's
+	// still-uncommitted work must now be part of the baseline.
+	if err := CaptureBaseline(ws, s); err != nil {
+		t.Fatal(err)
+	}
+	edits(t, repo, "other.py", s, ws)
+	if err := os.WriteFile(filepath.Join(repo, "other.py"), []byte("import os\nos.system(input())\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changes, ok, _, _, err = ChangedFilesWithInfo(ws, s)
+	if err != nil || !ok {
+		t.Fatalf("turn 3: expected a review, got ok=%v err=%v", ok, err)
+	}
+	got := paths(changes)
+	if len(got) != 1 || !strings.HasSuffix(got[0], "other.py") {
+		t.Errorf("turn 3 reviewed %v, want only this turn's other.py — turn 1's uncommitted "+
+			"work belongs in the baseline now, not in the diff", got)
+	}
+}

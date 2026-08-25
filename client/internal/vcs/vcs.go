@@ -121,6 +121,29 @@ func CaptureBaseline(cwd, sessionID string) error {
 	if cwd == "" || sessionID == "" {
 		return nil
 	}
+	// ⚠️ DISCARD LAST TURN'S DISCOVERED REPOSITORIES. A baseline means "the state at the
+	// start of THIS turn", and the cwd repository gets that by being re-captured here on
+	// every prompt. A discovered repository had no such refresh: RecordEditedRepo skips a
+	// root it has already recorded, and nothing cleared the directory, so its guard's
+	// "already recorded this turn" was really "this SESSION" and the baseline froze at
+	// first discovery.
+	//
+	// Everything the agent did in turn 1 therefore stayed in the diff for turns 2, 3, 4:
+	// reported live as the plugin "flagging something every turn even when there are no
+	// changes". Reproduced at three turns — turn 2 touched nothing and re-reviewed turn
+	// 1's file; turn 3 reviewed both.
+	//
+	// Clearing here rather than refreshing each recorded repo is deliberate: the next
+	// PreToolUse re-captures whichever repositories THIS turn actually touches, so a
+	// repository the agent has finished with costs nothing, and a `git stash create` per
+	// previously-seen repo per prompt is not paid for work nobody is doing. A repo edited
+	// again gets a baseline that correctly includes turn 1's uncommitted work, so only
+	// this turn's changes are reviewed.
+	//
+	// Safe for the re-wake: a block injects a message into the SAME turn, so no
+	// UserPromptSubmit fires between the block and the guard Stop, and /outcome still
+	// sees the baseline its review was computed against.
+	_ = os.RemoveAll(discoveredDir(sessionID))
 	// Line 1 = the baseline ref. Then the HISTORY header (see snapshotHistory), then
 	// "hash\tpath" for each untracked file, so ChangedFiles can skip pre-existing
 	// untracked files that didn't change. Header lines carry NO tab, which is what the
@@ -1308,7 +1331,7 @@ func RecordEditedRepo(editPath, cwd, sessionID string) error {
 
 	marker := filepath.Join(discoveredDir(sessionID), keyFor(root))
 	if _, err := os.Stat(marker); err == nil {
-		return nil // already recorded this turn
+		return nil // already recorded this turn (the dir is cleared at UserPromptSubmit)
 	}
 	if err := os.MkdirAll(discoveredDir(sessionID), 0o700); err != nil {
 		return nil
