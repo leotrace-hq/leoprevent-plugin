@@ -1,7 +1,7 @@
 {
   "name": "leoprevent-dev",
   "description": "Makes Claude Code generate more secure code. A Stop hook re-wakes the agent to review and fix its own changes against LeoTrace's security rules before the developer sees \"done\".",
-  "version": "0.2.21-dev.8b10563",
+  "version": "0.2.21-dev.d2a3151",
   "author": {
     "name": "LeoTrace"
   },
