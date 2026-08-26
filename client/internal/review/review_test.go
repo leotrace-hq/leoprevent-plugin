@@ -320,11 +320,11 @@ func TestReviewContextMessageNeverClaimsLeoPreventFixedIt(t *testing.T) {
 	}, {
 		name: "mixed",
 		f:    []wire.Finding{forceFix, forceFix, surfaced},
-		want: "flagged 2 findings to fix and surfaced 1 more for you to review",
+		want: "flagged 2 findings to fix and raised 1 more. See below.",
 	}, {
 		name: "surfaced only",
 		f:    []wire.Finding{surfaced},
-		want: "raised 1 finding for you to review",
+		want: "raised 1 finding. See below.",
 	}}
 
 	for _, c := range cases {
@@ -332,6 +332,15 @@ func TestReviewContextMessageNeverClaimsLeoPreventFixedIt(t *testing.T) {
 			msg := ReviewContextMessage(9, c.f, ForceFixedCount(c.f))
 			if !strings.Contains(msg, c.want) {
 				t.Errorf("want %q in:\n%s", c.want, msg)
+			}
+			// ⚠️ No branch may PREDICT what happens to a non-introduced finding either.
+			// Both of these are false when the account has opted in to pre-existing
+			// remediation, and this function cannot know whether it has — see the note on
+			// ReviewContextMessage. Mutation check: restore either phrase and this fails.
+			for _, bad := range []string{"for you to review", "surfaced "} {
+				if strings.Contains(msg, bad) {
+					t.Errorf("notice predicts a disposition it cannot know (%q); the header counts, the groups below dispose:\n%s", bad, msg)
+				}
 			}
 			// No branch may state the fix as already done.
 			for _, bad := range []string{"and fixed ", ", fixed "} {

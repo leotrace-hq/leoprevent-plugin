@@ -202,3 +202,70 @@ func TestServerParagraphOnlyPromptKeepsTheRewakeMarker(t *testing.T) {
 		t.Fatalf("must keep the re-wake marker prefix.\ngot:\n%s", got)
 	}
 }
+
+// TestHeaderClaimsNeitherDispositionNorProvenance: ⚠️ FOUND BY A LIVE DEV RUN
+// (0.2.23-dev.85be7e3). Two versions of the no-force-fix header have now been wrong, in
+// opposite ways, and this pins against both.
+//
+//   - "nothing to auto-fix" implied LeoPrevent applies fixes, and prejudged a server-side
+//     decision the client cannot see — it flatly contradicts a server paragraph asking for
+//     a fix.
+//   - "nothing to fix in the code you changed" traded that for a PROVENANCE claim, which
+//     the live run falsified at once: a brand-new file's helper fired an auto_fix:false
+//     rule, so the finding was introduced, landed in the suggest-only group (which the flag
+//     outranks the class for), and the header announced there was nothing wrong with code
+//     the agent had just written.
+//
+// Both facts are unsafe to assert from here, so the header asserts neither and each group's
+// own paragraph disposes.
+func TestHeaderClaimsNeitherDispositionNorProvenance(t *testing.T) {
+	// The live shape: introduced (new file) AND suggest-only.
+	introducedSuggestOnly := wire.Finding{
+		Rule: "no-input-validation", Name: "Missing Input / External-Data Validation",
+		Location: "scratch.ts:2", Issue: "url passed straight to fetch", Fix: "allowlist the host",
+		SuggestOnly: true,
+	}
+	for _, fs := range [][]wire.Finding{
+		{introducedSuggestOnly},
+		{preexisting},
+		{suggestOnlyPre},
+	} {
+		for _, prompt := range []string{promptNoDirective(fs), BuildFindingsPrompt(fs, serverText)} {
+			header := strings.SplitN(prompt, "\n", 2)[0]
+			if !strings.HasPrefix(header, "🔒 LeoPrevent: security review") {
+				t.Fatalf("header must keep the re-wake marker: %q", header)
+			}
+			for _, banned := range []string{
+				"nothing to auto-fix",                    // disposition, and implies we apply fixes
+				"nothing to fix in the code you changed", // provenance, falsified live
+				"your change itself is clean",            // same provenance claim, older wording
+			} {
+				if strings.Contains(header, banned) {
+					t.Errorf("header asserts something it cannot know (%q): %q", banned, header)
+				}
+			}
+		}
+	}
+}
+
+// TestSuggestOnlyCopyDoesNotBlameProxyConfig: the parenthetical "(e.g. reverse-proxy /
+// web-server config)" was written when auto_fix:false was assumed to mean proxy rules. It
+// does not — `no-input-validation` carries the flag too — and a live run put an app-level
+// SSRF finding under it. The AGENT spotted the mismatch and said so in its reply, which is
+// a good catch and a bad sign: copy that argues with its own finding costs the finding its
+// credibility.
+func TestSuggestOnlyCopyDoesNotBlameProxyConfig(t *testing.T) {
+	got := promptNoDirective([]wire.Finding{suggestOnlyPre})
+	for _, banned := range []string{"reverse-proxy", "web-server config", "shared config"} {
+		if strings.Contains(got, banned) {
+			t.Errorf("suggest-only copy must not name proxy config as the reason; found %q.\ngot:\n%s", banned, got)
+		}
+	}
+	// The real shared reason, and the prohibition matching the local tier's wording.
+	if !strings.Contains(got, "high risk of breaking existing behaviour") {
+		t.Errorf("suggest-only copy must state the actual reason.\ngot:\n%s", got)
+	}
+	if !strings.Contains(got, "do not change this code without their go-ahead") {
+		t.Errorf("suggest-only copy must tell the agent to leave the code alone.\ngot:\n%s", got)
+	}
+}

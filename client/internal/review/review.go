@@ -146,13 +146,20 @@ func BuildFindingsPrompt(findings []wire.Finding, preexistingText string) string
 		b.WriteString("🔒 LeoPrevent: security review: fix before finishing this turn. Apply each directly, don't ask.\n\n")
 		writeFindingGroups(&b, introduced)
 	case len(suggestOnly) > 0 || len(preexisting) > 0:
-		// The agent introduced nothing, but there are items below. Keep the marker prefix,
-		// and stay NEUTRAL about what happens to them: each group's own paragraph says
-		// that, and for pre-existing findings that paragraph comes from the server. The
-		// old wording ("nothing to auto-fix") did two things wrong at once — it implied
-		// LeoPrevent applies fixes, and it was a client-side claim about a server-side
-		// decision, so it would flatly contradict a server paragraph asking for a fix.
-		b.WriteString("🔒 LeoPrevent: security review: nothing to fix in the code you changed. See the items below.\n\n")
+		// Nothing to fix without asking first, but there are items below. Keep the marker
+		// prefix and claim NOTHING about them: each group's own paragraph disposes, and for
+		// pre-existing findings that paragraph comes from the server.
+		//
+		// ⚠️ TWO EARLIER VERSIONS OF THIS LINE WERE BOTH WRONG, IN OPPOSITE WAYS.
+		// "nothing to auto-fix" implied LeoPrevent applies fixes, and prejudged a
+		// server-side decision it cannot see — it flatly contradicts a server paragraph
+		// asking for a fix. Its replacement, "nothing to fix in the code you changed",
+		// traded that for a PROVENANCE claim, which a live run falsified immediately: a
+		// brand-new file's finding landed here (introduced, but on an auto_fix:false rule),
+		// so the flaw was squarely in the code the agent had just written and the header
+		// said otherwise. Disposition and provenance are both unsafe to assert here. State
+		// neither.
+		b.WriteString("🔒 LeoPrevent: security review: see the items below.\n\n")
 	default:
 		// Genuinely clean; keep the Codex re-wake marker prefix either way.
 		b.WriteString("🔒 LeoPrevent: security review: your change itself is clean.\n\n")
@@ -163,9 +170,19 @@ func BuildFindingsPrompt(findings []wire.Finding, preexistingText string) string
 		// agent's. There are exactly two things it can say about a finding — fix it now, or
 		// tell the developer about it — so wording that implies a third actor teaches the
 		// agent the wrong model of who acts, and misleads the developer reading the same
-		// line on their screen. The BEHAVIOUR here is unchanged: this group is still the
-		// developer's call and still not fixed in-turn.
-		b.WriteString("These are for the developer to decide on, not for you to fix now: the fix carries high regression risk (e.g. reverse-proxy / web-server config). Tell the developer what is wrong and what the fix would be, and do not change shared config without their go-ahead:\n\n")
+		// line on their screen.
+		//
+		// ⚠️ AND IT MUST NOT NAME PROXY CONFIG AS THE REASON. It used to end "(e.g.
+		// reverse-proxy / web-server config)", written when auto_fix:false was assumed to
+		// mean proxy rules. It does not: no-input-validation carries the flag too, and a
+		// live run put an app-level SSRF finding under that parenthetical — the AGENT
+		// spotted the mismatch and said so in its reply, which is a good catch and a bad
+		// sign. "high risk of breaking existing behaviour" is the actual shared reason.
+		//
+		// The prohibition is now on THIS code rather than on "shared config", for the same
+		// reason and to match the local tier's "do not change the code" verbatim (the
+		// adapters-in-parity rule applies to copy too).
+		b.WriteString("These are for the developer to decide on, not for you to fix now: the fix carries a high risk of breaking existing behaviour, so it needs their judgement. Tell the developer what is wrong and what the fix would be, and do not change this code without their go-ahead:\n\n")
 		writeFindingGroups(&b, suggestOnly)
 	}
 	if len(preexisting) > 0 {
@@ -387,6 +404,21 @@ func ReviewContextMessage(fileCount int, findings []wire.Finding, forceFixed int
 	// "flagged N to fix" is true when written and stays true either way; the
 	// agent reports the actual edits in its own prose below, as the closing
 	// instruction asks. Keep the verbs on the reviewer's side of the line.
+	//
+	// ⚠️ AND NO BRANCH MAY PREDICT WHAT HAPPENS NEXT TO A NON-INTRODUCED FINDING. Two of
+	// them used to: "raised N for you to review" and "surfaced N more for you to review".
+	// Both are false whenever the account has opted in to pre-existing remediation, because
+	// the agent is then being asked to fix those findings rather than report them — and
+	// this function CANNOT KNOW which it is (that decision reaches the client only as the
+	// server's paragraph, deliberately; see wire.ReviewResponse.PreexistingDirective). A
+	// branch here would need the policy compiled into the client, which is exactly what
+	// would let a developer read the setting off their own screen.
+	//
+	// So the header COUNTS and the groups below DISPOSE. "raised N findings. See below."
+	// is true whether the agent is about to fix them or report them, and "surfaced" had to
+	// go with "for you to review": it is our word for the not-fixed disposition, so it is
+	// the same claim in quieter clothing. Only the INTRODUCED branch may still say "to
+	// fix", because that count is the client's own derivation and not the policy's.
 	var tail string
 	switch {
 	case len(findings) == 0:
@@ -394,12 +426,12 @@ func ReviewContextMessage(fileCount int, findings []wire.Finding, forceFixed int
 		// finding we can't count.
 		tail = ". See the review notes below."
 	case forceFixed == 0:
-		tail = " and raised " + count(len(findings), "finding") + " for you to review."
+		tail = " and raised " + count(len(findings), "finding") + ". See below."
 	case forceFixed == len(findings):
 		tail = " and flagged " + count(forceFixed, "finding") + " to fix below."
 	default:
-		tail = ", flagged " + count(forceFixed, "finding") + " to fix and surfaced " +
-			strconv.Itoa(len(findings)-forceFixed) + " more for you to review."
+		tail = ", flagged " + count(forceFixed, "finding") + " to fix and raised " +
+			strconv.Itoa(len(findings)-forceFixed) + " more. See below."
 	}
 
 	return "Begin your reply with exactly this markdown, before anything else:\n\n" +
