@@ -11,17 +11,20 @@ import (
 // A KEY THE SERVER REJECTS IS A DEAD END, AND THIS IS HOW WE GET OUT OF IT.
 //
 // Ensure deliberately returns early when a key is already present: enrolment exists to give a
-// machine its FIRST key, and re-minting every turn would rotate a working credential out from
-// under a developer's other machines. But that early return had a failure mode with no way
-// back. A machine holding a key the server does not recognise gets 401 on every call, fails
+// machine its FIRST key, and re-minting every turn would churn this machine's own slot in the
+// person's key set (and, before LEO-168 gave each machine its own key, would have rotated a
+// working credential out from under their other machines). But that early return had a failure
+// mode with no way back. A machine holding a key the server does not recognise gets 401, fails
 // open, reports nothing, and never enrols, because from its own point of view it is licensed.
 // The plugin installed and firing and completely useless, with the only signal a skip notice
 // the desktop app does not even render.
 //
 // Not hypothetical. Found live: a developer pasted a PROD key into the DEV plugin, and since
 // license.json is one per-user file shared by both channels the key was real, just not real on
-// that server. The same shape covers a key rotated on another machine, a developer revoked and
-// later re-invited, and a mistyped paste.
+// that server. The same shape covers a developer revoked and later re-invited, a key evicted at
+// the per-person device cap, and a mistyped paste. ("A key rotated on another machine" used to
+// head that list and was the commonest cause by far; LEO-168 removed it, which is why this path
+// should now fire rarely rather than several times a day.)
 //
 // ⚠️ THE MARKER IS KEYED ON THE CREDENTIAL, NOT ON THE SESSION, and the first version of this
 // got that wrong in a way that made the whole feature almost useless. "The server rejects this

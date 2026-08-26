@@ -19,9 +19,18 @@ type EnrollRequest struct {
 	Arch      string `json:"arch,omitempty"`
 	// ClientVersion is the plugin build asking to enrol, so a rollout can be traced to a release.
 	ClientVersion string `json:"client_version,omitempty"`
-	// Device is a non-unique, human-readable hint (a hostname) for a support conversation. It is
-	// NOT an identity and nothing keys off it: a person holds ONE license across every machine.
+	// Device is a non-unique, human-readable hint (a hostname) for a support conversation.
 	Device string `json:"device,omitempty"`
+	// DeviceID says WHICH of this person's machines is enrolling, so re-enrolling replaces this
+	// machine's own key rather than adding another (LEO-168). Random, persisted beside the key in
+	// the per-user license.json, and therefore stable on a laptop and genuinely new in each cloud
+	// sandbox — which is correct, because a sandbox IS a new machine.
+	//
+	// ⚠️ STILL NOT AN AUTHORISATION. `Developer` decides whose row is touched and is checked
+	// against the account's allowlist; the worst a forged DeviceID can do is displace another key
+	// on the caller's own row. Empty is accepted (an older client), and the server then falls back
+	// to matching on (device, os, arch).
+	DeviceID string `json:"device_id,omitempty"`
 }
 
 // EnrollResponse carries the minted key.
@@ -36,8 +45,11 @@ type EnrollResponse struct {
 	// and worth logging: it is what correlates a developer's turns in a support conversation.
 	LicenseID string `json:"license_id"`
 	AccountID string `json:"account_id"`
-	// Rotated reports that this replaced an existing key rather than issuing a first one, so the
-	// client can say so: one license belongs to a PERSON, not a machine, and enrolling a second
-	// machine therefore stops the first one authenticating.
+	// Rotated reports that this replaced THIS MACHINE'S previous key.
+	//
+	// ⚠️ IT NO LONGER MEANS "replaced the person's key", and the sentence that used to be here —
+	// enrolling a second machine stops the first one authenticating — was the bug, not the design
+	// (LEO-168). A person now holds one key per machine, so a NEW device reports false and leaves
+	// every other machine working.
 	Rotated bool `json:"rotated"`
 }

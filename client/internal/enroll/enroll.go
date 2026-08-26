@@ -11,6 +11,12 @@
 // key lands in the per-user license.json — outside the plugin directory, so a plugin auto-update
 // cannot clobber it — and every turn after that authenticates as that developer.
 //
+// ⚠️ ONE KEY PER MACHINE, NOT PER PERSON (LEO-168). license.json is per machine, so while
+// enrolment ROTATED the person's single digest, every machine's enrolment killed the others' —
+// and since a cloud sandbox persists nothing, every cloud session was a new machine doing exactly
+// that. The server now ADDS this machine's key to the person's row, identified by the device id
+// this package sends, so a laptop and a cloud session hold live credentials at the same time.
+//
 // ⚠️ FAIL-OPEN, LIKE EVERYTHING ELSE ON THIS PATH. Every failure here returns quietly and leaves
 // the turn to proceed unreviewed: a developer must never be trapped because enrolment did not
 // work. The Stop path's existing skip notice is what tells them the turn was not reviewed.
@@ -141,6 +147,11 @@ func Ensure(cfg *config.Config, cwd, sessionID string) bool {
 		Arch:          runtime.GOARCH,
 		ClientVersion: buildinfo.Version,
 		Device:        host,
+		// ⚠️ RESOLVED (AND PERSISTED) BEFORE THE CALL, not after. It is what tells the server this
+		// machine is enrolling AGAIN rather than for the first time, so a machine that generated an
+		// id, enrolled, and then failed to persist it would take a fresh slot in its own per-person
+		// key set on every attempt. See config.EnsureDeviceID.
+		DeviceID: config.EnsureDeviceID(),
 	})
 	if err != nil {
 		// Deliberately terse and deliberately not alarming: the commonest cause is an address the
