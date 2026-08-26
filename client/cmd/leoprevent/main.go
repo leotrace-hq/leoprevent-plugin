@@ -190,20 +190,54 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// ever reviewed — silently. That is the same false-assurance the Stop-path skip
 		// notice exists to prevent, but it never fires on the desktop app (systemMessage
 		// is not forwarded over stream-json), and an unlicensed install has no Stop
-		// notice to render anyway. Surface it here, on the same two-channel prompt
-		// path as the update nag, throttled once per day per install.
+		// notice to render anyway. Surface it here, on the same two-channel prompt path
+		// as the update nag. The throttle differs by whether this machine can enrol
+		// itself — see the comment on the branch below.
 		//
 		// Deliberately NOT fatal and NOT a block: a missing license must never trap the
 		// developer (the fail-open non-negotiable). Config-load failure is also ignored
 		// here — the Stop path already classifies that as SkipMisconfigured.
 		if cfg, cerr := config.Load(); cerr == nil && cfg.LicenseKey == "" {
-			if update.PendingLicenseNag(*agentName) {
-				slog.Info("no license key configured — turns are NOT being reviewed")
+			emitLicenseNag := func() {
 				msg := update.LicenseMessage(*agentName)
 				ctx := update.LicenseContextMessage(*agentName)
 				if out, derr := a.DeliverPromptNotice(msg, ctx); derr == nil {
 					fmt.Fprint(stdout, string(out))
 				}
+			}
+			// A machine eligible for enrolment (enroll.Ensure's own gate: a token AND
+			// cloud tier, mirrored here exactly rather than re-derived) gets ONE FREE
+			// PROMPT before any nag, then at most ONE PER SESSION rather than the
+			// once-per-day throttle below.
+			//
+			// enroll.Ensure runs on THIS SAME turn's Stop hook, seconds later, so on
+			// the session's first prompt "no key yet" is not a fact about anything
+			// being broken, it just hasn't been tried yet. Nagging there is exactly
+			// what produced the confusion this guards against: a developer reading
+			// "no license key set, set it by hand" moments before the plugin sets it
+			// for them (see the 2026-08-26 session that surfaced this).
+			//
+			// From the SECOND prompt on, enrolment has already had its one shot: its
+			// own attempt-throttle is the same once-per-session shape. So a key that
+			// is STILL empty means this session's enrolment is genuinely stuck, worth
+			// saying once. Scoped to the SESSION rather than the day: the fact being
+			// reported is "this session's attempt failed", which does not change with
+			// the wall clock, so re-nagging mid-session once a day boundary passes
+			// would repeat the same information for no new reason. A token-less
+			// install has no such attempt to wait on or tie the nag to, so it keeps
+			// the existing once-per-day-per-install cadence unchanged below.
+			if cfg.EnrollToken != "" && cfg.Tier == config.TierCloud {
+				if !notify.FirstThisSession(ev.SessionID, "license_nag_seen_prompt") {
+					// Not the first prompt: enrolment already had its shot this session.
+					if notify.FirstThisSession(ev.SessionID, "license_nag_shown") {
+						slog.Info("no license key configured after this session's enrolment attempt")
+						emitLicenseNag()
+					}
+				}
+				// else: first prompt this session, enrolment hasn't run yet, say nothing.
+			} else if update.PendingLicenseNag(*agentName) {
+				slog.Info("no license key configured — turns are NOT being reviewed")
+				emitLicenseNag()
 			}
 		}
 		return 0 // capture is silent apart from the (rare) nags: never a re-wake

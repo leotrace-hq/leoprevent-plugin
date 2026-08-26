@@ -19,6 +19,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -90,15 +92,35 @@ func UserLicensePath() (string, error) {
 	return filepath.Join(dir, "leoprevent", UserLicenseFile), nil
 }
 
-// userLicense holds only the customer key; server_url + tier stay the deployment's job
-// (the shipped leoprevent.json), never the dev's.
+// userLicense holds only the customer key and this machine's device id; server_url + tier
+// stay the deployment's job (the shipped leoprevent.json), never the dev's.
 type userLicense struct {
 	LicenseKey string `json:"license_key"`
+	// DeviceID identifies THIS MACHINE to enrolment, so a re-enrolment replaces this machine's
+	// own key rather than adding another (LEO-168). NOT a credential and not a secret: it names
+	// a device, and the server checks the asserted address against the account's allowlist
+	// exactly as before.
+	//
+	// It lives here rather than in a file of its own because the two facts have the same
+	// lifetime and the same home, and one file is one thing to keep 0600. Absent on any file
+	// written before this existed, which the server tolerates.
+	DeviceID string `json:"device_id,omitempty"`
 }
 
 // SaveLicense writes key to the per-user license file (0600), creating the dir, and
 // returns the path written. Used by the `set-license` subcommand.
+//
+// ⚠️ IT PRESERVES AN EXISTING device_id. Overwriting the file wholesale would discard it, so a
+// developer running `set-license` would silently become a NEW machine to the server and take a
+// second slot in their own per-person key set — leaving the entry their previous id held live
+// until the cap evicted it.
 func SaveLicense(key string) (string, error) {
+	return saveUserLicense(func(u *userLicense) { u.LicenseKey = key })
+}
+
+// saveUserLicense reads the per-user file, applies mutate, and writes it back — so each caller
+// changes one field without having to know what the others are.
+func saveUserLicense(mutate func(*userLicense)) (string, error) {
 	path, err := UserLicensePath()
 	if err != nil {
 		return "", err
@@ -106,7 +128,9 @@ func SaveLicense(key string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", err
 	}
-	data, err := json.MarshalIndent(userLicense{LicenseKey: key}, "", "  ")
+	u := readUserLicenseFile()
+	mutate(&u)
+	data, err := json.MarshalIndent(u, "", "  ")
 	if err != nil {
 		return "", err
 	}
@@ -116,27 +140,60 @@ func SaveLicense(key string) (string, error) {
 	return path, nil
 }
 
+// EnsureDeviceID returns this machine's device id, generating and PERSISTING one if it has none.
+//
+// ⚠️ IT PERSISTS BEFORE THE CALLER ENROLS, DELIBERATELY. An id generated, sent, and then lost
+// because the key write failed would make the next attempt a different machine, so a machine
+// stuck in that state would burn one slot of its own key set per attempt. A device id is not a
+// credential, so writing it early costs nothing.
+//
+// Best-effort: on any failure it returns whatever it has, empty included. The server accepts an
+// empty id and falls back to matching on (device, os, arch), so the worst case is the coarser
+// identity an older client already gets — never a refused enrolment.
+func EnsureDeviceID() string {
+	if id := readUserLicenseFile().DeviceID; id != "" {
+		return id
+	}
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		slog.Warn("could not generate a device id; enrolment will identify this machine by hostname",
+			"err", err.Error())
+		return ""
+	}
+	id := hex.EncodeToString(b[:])
+	if _, err := saveUserLicense(func(u *userLicense) { u.DeviceID = id }); err != nil {
+		// Returned anyway: an unpersisted id is still better than none for THIS enrolment, and
+		// the next turn simply generates another.
+		slog.Warn("could not save this machine's device id", "err", err.Error())
+	}
+	return id
+}
+
 // readUserLicense returns the key from the per-user license file, or "" if absent or
 // unreadable. SOFT on every error (a malformed user file must NEVER break config
 // loading — the hook must still load and fail open); it just means "no user key".
-func readUserLicense() string {
+func readUserLicense() string { return readUserLicenseFile().LicenseKey }
+
+// readUserLicenseFile decodes the whole per-user file, or the zero value. Soft on every error,
+// for the reason above: a malformed file means "nothing stored", never a broken hook.
+func readUserLicenseFile() userLicense {
 	path, err := UserLicensePath()
 	if err != nil {
-		return ""
+		return userLicense{}
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			slog.Warn("could not read user license file; ignoring", "path", path, "err", err.Error())
 		}
-		return ""
+		return userLicense{}
 	}
 	var u userLicense
 	if err := json.Unmarshal(data, &u); err != nil {
 		slog.Warn("user license file is malformed; ignoring", "path", path, "err", err.Error())
-		return ""
+		return userLicense{}
 	}
-	return u.LicenseKey
+	return u
 }
 
 // UserLicenseKey returns the key from the per-user license file, or "".

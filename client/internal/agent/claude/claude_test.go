@@ -269,8 +269,15 @@ func TestReviewContextStatesSurfacedNotFixed(t *testing.T) {
 	if strings.Contains(pre, "and fixed") {
 		t.Errorf("surfaced-only notice must not claim a fix; got %q", pre)
 	}
-	if !strings.Contains(pre, "2 findings") || !strings.Contains(pre, "for you to review") {
-		t.Errorf("surfaced-only notice should say what's waiting on the dev; got %q", pre)
+	// It states the COUNT and points below, and deliberately does NOT say what happens to
+	// them: with the account's pre-existing remediation opt-in on, the agent is being asked
+	// to fix these, and this side cannot know whether it is (see
+	// review.ReviewContextMessage). The old assertion was on "for you to review".
+	if !strings.Contains(pre, "raised 2 findings") || !strings.Contains(pre, "See below") {
+		t.Errorf("surfaced-only notice should count them and point below; got %q", pre)
+	}
+	if strings.Contains(pre, "for you to review") {
+		t.Errorf("the notice must not predict a disposition it cannot know; got %q", pre)
 	}
 
 	// Suggest-only is surfaced too, even though it is NOT pre-existing.
@@ -287,10 +294,14 @@ func TestReviewContextStatesSurfacedNotFixed(t *testing.T) {
 		t.Errorf("introduced findings are flagged for an in-turn fix; got %q", fix)
 	}
 
-	// Mixed → both halves stated, so neither is over- nor under-claimed.
+	// Mixed → both counts stated, so neither half is dropped. Only the INTRODUCED half may
+	// say "to fix"; that count is the client's own derivation, not the account's policy.
 	mix := ctxOf([]wire.Finding{{Rule: "a"}, {Rule: "b", Preexisting: true}})
-	if !strings.Contains(mix, "flagged 1 finding to fix") || !strings.Contains(mix, "surfaced 1 more") {
+	if !strings.Contains(mix, "flagged 1 finding to fix") || !strings.Contains(mix, "raised 1 more") {
 		t.Errorf("mixed notice must state both halves; got %q", mix)
+	}
+	if strings.Contains(mix, "surfaced ") {
+		t.Errorf("\"surfaced\" is our word for the NOT-fixed disposition, so it makes the same unknowable claim; got %q", mix)
 	}
 }
 

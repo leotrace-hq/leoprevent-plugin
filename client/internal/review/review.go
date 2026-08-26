@@ -104,19 +104,29 @@ func BuildPrompt(changes []transcript.Change, selected []rulespec.Rule, metaPoli
 //
 // The first line MUST start with the Codex re-wake marker (transcript.reWakeMarker;
 // see TestPromptPrefixMatchesCodexMarker) — keep "🔒 LeoPrevent: security review".
-func BuildFindingsPrompt(findings []wire.Finding) string {
+// preexistingText is the paragraph that introduces the PRE-EXISTING findings, passed
+// straight through from wire.ReviewResponse.PreexistingDirective and rendered VERBATIM.
+// Empty means the server sent none, and preexistingInstruction's own default is used.
+//
+// ⚠️ THIS MODULE MUST NOT KNOW WHY THAT TEXT DIFFERS, AND MUST NEVER BRANCH ON IT. What
+// the agent is told to do about code it did not write is a SERVER-SIDE policy decision.
+// The client renders one group with one paragraph and cannot tell which policy produced
+// it. Anything that inspected the string, or took a boolean alongside it, would put a
+// second copy of that policy in the shipped binary — and then every developer's install
+// would have to move in step with the server for the two to agree, which is the whole
+// thing this shape avoids.
+func BuildFindingsPrompt(findings []wire.Finding, preexistingText string) string {
 	// Split into three groups by how each finding may be remediated:
 	//   - introduced: a vuln the agent added THIS turn whose rule permits auto-fix →
-	//     force-fixed in-turn ("don't ask").
+	//     fixed in-turn ("apply directly, don't ask").
 	//   - suggestOnly: the rule is marked auto_fix:false (high-regression-risk fix,
-	//     e.g. proxy/server config) → surfaced for manual review, never auto-applied,
-	//     EVEN IF introduced this turn. Checked first so it wins over the provenance
-	//     split (an introduced finding on a suggest-only rule must NOT be force-fixed).
-	//   - preexisting: in code that already existed → surfaced to the developer to
-	//     fix-or-not (scope creep to auto-fix code the agent didn't touch). One carve-out
-	//     in the copy: when the agent's OWN added lines route through the old sink, it may
-	//     rewire those added lines to a safe sibling — pre-existing lines stay untouched
-	//     either way, and "when unsure, leave it" keeps the default conservative.
+	//     e.g. proxy/server config) → reported to the developer, never fixed in-turn,
+	//     EVEN IF introduced this turn. Checked FIRST so it wins over the provenance
+	//     split (an introduced finding on a suggest-only rule must NOT be fixed).
+	//   - preexisting: in code that already existed. WHAT THE AGENT IS TOLD TO DO WITH
+	//     THESE IS NOT DECIDED HERE — it is the paragraph the server sent, rendered
+	//     verbatim (see preexistingInstruction). This module deliberately does not know
+	//     what the alternatives are, so there is exactly one code path either way.
 	// Absent flags ⇒ introduced + auto-fix allowed (the safe historical default).
 	var introduced, suggestOnly, preexisting []wire.Finding
 	for _, f := range findings {
@@ -136,18 +146,48 @@ func BuildFindingsPrompt(findings []wire.Finding) string {
 		b.WriteString("🔒 LeoPrevent: security review: fix before finishing this turn. Apply each directly, don't ask.\n\n")
 		writeFindingGroups(&b, introduced)
 	case len(suggestOnly) > 0 || len(preexisting) > 0:
-		// Nothing to force-fix, but there are items to surface. Keep the marker prefix.
-		b.WriteString("🔒 LeoPrevent: security review: nothing to auto-fix; review the items below.\n\n")
+		// Nothing to fix without asking first, but there are items below. Keep the marker
+		// prefix and claim NOTHING about them: each group's own paragraph disposes, and for
+		// pre-existing findings that paragraph comes from the server.
+		//
+		// ⚠️ TWO EARLIER VERSIONS OF THIS LINE WERE BOTH WRONG, IN OPPOSITE WAYS.
+		// "nothing to auto-fix" implied LeoPrevent applies fixes, and prejudged a
+		// server-side decision it cannot see — it flatly contradicts a server paragraph
+		// asking for a fix. Its replacement, "nothing to fix in the code you changed",
+		// traded that for a PROVENANCE claim, which a live run falsified immediately: a
+		// brand-new file's finding landed here (introduced, but on an auto_fix:false rule),
+		// so the flaw was squarely in the code the agent had just written and the header
+		// said otherwise. Disposition and provenance are both unsafe to assert here. State
+		// neither.
+		b.WriteString("🔒 LeoPrevent: security review: see the items below.\n\n")
 	default:
 		// Genuinely clean; keep the Codex re-wake marker prefix either way.
 		b.WriteString("🔒 LeoPrevent: security review: your change itself is clean.\n\n")
 	}
 	if len(suggestOnly) > 0 {
-		b.WriteString("These need a fix, but LeoPrevent does NOT auto-apply it, because the fix carries high regression risk (e.g. reverse-proxy / web-server config). Review each, apply manually only if correct, and confirm with the developer before changing shared config:\n\n")
+		// ⚠️ IT MUST NOT SAY "LeoPrevent does NOT auto-apply it", WHICH IS WHAT IT SAID
+		// BEFORE. LeoPrevent never applies anything: every edit, in every group, is the
+		// agent's. There are exactly two things it can say about a finding — fix it now, or
+		// tell the developer about it — so wording that implies a third actor teaches the
+		// agent the wrong model of who acts, and misleads the developer reading the same
+		// line on their screen.
+		//
+		// ⚠️ AND IT MUST NOT NAME PROXY CONFIG AS THE REASON. It used to end "(e.g.
+		// reverse-proxy / web-server config)", written when auto_fix:false was assumed to
+		// mean proxy rules. It does not: no-input-validation carries the flag too, and a
+		// live run put an app-level SSRF finding under that parenthetical — the AGENT
+		// spotted the mismatch and said so in its reply, which is a good catch and a bad
+		// sign. "high risk of breaking existing behaviour" is the actual shared reason.
+		//
+		// The prohibition is now on THIS code rather than on "shared config", for the same
+		// reason and to match the local tier's "do not change the code" verbatim (the
+		// adapters-in-parity rule applies to copy too).
+		b.WriteString("These are for the developer to decide on, not for you to fix now: the fix carries a high risk of breaking existing behaviour, so it needs their judgement. Tell the developer what is wrong and what the fix would be, and do not change this code without their go-ahead:\n\n")
 		writeFindingGroups(&b, suggestOnly)
 	}
 	if len(preexisting) > 0 {
-		b.WriteString("Pre-existing issues NOT introduced by your change this turn. Do NOT edit these pre-existing lines. If code YOU added this turn routes through one of them, make your added code safe without touching the old lines (e.g. wire it to a safe sibling helper), but only when that stays compatible with existing data and flows; when unsure, leave it. Once you're done, tell the developer these exist and ask whether they want them fixed:\n\n")
+		b.WriteString(preexistingInstruction(preexistingText))
+		b.WriteString("\n\n")
 		writeFindingGroups(&b, preexisting)
 	}
 	// The prompt deliberately ends with the findings. It used to append AssumptionsAsk
@@ -156,6 +196,34 @@ func BuildFindingsPrompt(findings []wire.Finding) string {
 	// the agent's answer both render on the developer's screen. See AssumptionsAsk for
 	// what that cost, and for the parser that is still ready if it is re-enabled.
 	return b.String()
+}
+
+// preexistingInstruction returns the paragraph that introduces the PRE-EXISTING findings:
+// the SERVER's, when it sent one, and this module's own otherwise.
+//
+// ⚠️ THE DEFAULT IS THE ONLY WORDING THIS BINARY HOLDS, AND IT IS THE ONE THIS BINARY HAS
+// ALWAYS HELD. That is the point. What the agent is told to do about code it did not write
+// is a policy decision, it is made server-side, and it changes without a plugin release. So
+// the client ships exactly one paragraph — the conservative one, unchanged — and renders the
+// server's instead whenever one arrives. It never learns that another policy exists, never
+// branches on which it got, and so can neither fall out of step with the server nor report
+// the difference to the developer.
+//
+// This default is reached in the ORDINARY case: the server sent nothing because the policy
+// is off, or because it predates the field. Falling back to SILENCE would be worse — an
+// agent handed a list of flaws with no instruction invents one.
+//
+// Same posture as the local tier's meta-policy, which is also rendered verbatim from the
+// server rather than kept here.
+func preexistingInstruction(fromServer string) string {
+	if t := strings.TrimSpace(fromServer); t != "" {
+		return t
+	}
+	return "Pre-existing issues NOT introduced by your change this turn. Do NOT edit these " +
+		"pre-existing lines. If code YOU added this turn routes through one of them, make your " +
+		"added code safe without touching the old lines (e.g. wire it to a safe sibling helper), " +
+		"but only when that stays compatible with existing data and flows; when unsure, leave it. " +
+		"Once you're done, tell the developer these exist and ask whether they want them fixed:"
 }
 
 // writeFindingGroups renders findings grouped by rule NAME (the human name, e.g.
@@ -336,6 +404,21 @@ func ReviewContextMessage(fileCount int, findings []wire.Finding, forceFixed int
 	// "flagged N to fix" is true when written and stays true either way; the
 	// agent reports the actual edits in its own prose below, as the closing
 	// instruction asks. Keep the verbs on the reviewer's side of the line.
+	//
+	// ⚠️ AND NO BRANCH MAY PREDICT WHAT HAPPENS NEXT TO A NON-INTRODUCED FINDING. Two of
+	// them used to: "raised N for you to review" and "surfaced N more for you to review".
+	// Both are false whenever the account has opted in to pre-existing remediation, because
+	// the agent is then being asked to fix those findings rather than report them — and
+	// this function CANNOT KNOW which it is (that decision reaches the client only as the
+	// server's paragraph, deliberately; see wire.ReviewResponse.PreexistingDirective). A
+	// branch here would need the policy compiled into the client, which is exactly what
+	// would let a developer read the setting off their own screen.
+	//
+	// So the header COUNTS and the groups below DISPOSE. "raised N findings. See below."
+	// is true whether the agent is about to fix them or report them, and "surfaced" had to
+	// go with "for you to review": it is our word for the not-fixed disposition, so it is
+	// the same claim in quieter clothing. Only the INTRODUCED branch may still say "to
+	// fix", because that count is the client's own derivation and not the policy's.
 	var tail string
 	switch {
 	case len(findings) == 0:
@@ -343,12 +426,12 @@ func ReviewContextMessage(fileCount int, findings []wire.Finding, forceFixed int
 		// finding we can't count.
 		tail = ". See the review notes below."
 	case forceFixed == 0:
-		tail = " and raised " + count(len(findings), "finding") + " for you to review."
+		tail = " and raised " + count(len(findings), "finding") + ". See below."
 	case forceFixed == len(findings):
 		tail = " and flagged " + count(forceFixed, "finding") + " to fix below."
 	default:
-		tail = ", flagged " + count(forceFixed, "finding") + " to fix and surfaced " +
-			strconv.Itoa(len(findings)-forceFixed) + " more for you to review."
+		tail = ", flagged " + count(forceFixed, "finding") + " to fix and raised " +
+			strconv.Itoa(len(findings)-forceFixed) + " more. See below."
 	}
 
 	return "Begin your reply with exactly this markdown, before anything else:\n\n" +
@@ -367,11 +450,24 @@ func count(n int, noun string) string {
 	return strconv.Itoa(n) + " " + noun + "s"
 }
 
-// ForceFixedCount reports how many findings the re-wake will actually apply
-// without asking — the INTRODUCED ones whose rule permits auto-fix. It mirrors
-// BuildFindingsPrompt's grouping exactly (suggest-only is checked FIRST, so an
-// introduced finding on a suggest-only rule is surfaced, not force-fixed); keep
-// the two in step if that split ever changes.
+// ForceFixedCount reports how many findings the re-wake tells the agent to fix without
+// asking: the INTRODUCED ones whose rule permits auto-fix. It mirrors BuildFindingsPrompt's
+// grouping (suggest-only is checked FIRST, so a finding on a suggest-only rule is reported
+// whatever its class); keep the two in step if that split ever changes.
+//
+// ⚠️ IT DELIBERATELY DOES NOT COUNT PRE-EXISTING FINDINGS, EVEN WHEN THE SERVER'S
+// PARAGRAPH ASKS FOR THEM TO BE FIXED. An earlier version did, on the reasoning that the
+// developer-facing notice would otherwise say "raised N for you to review" above a prompt
+// asking the agent to fix them. That reasoning was sound about the notice and wrong about
+// the boundary: this function is reached from the agent adapters, where the server's
+// response is long gone, so counting them would need the POLICY compiled into the client —
+// which would make the setting visible in the developer's own notice and put a second copy
+// of a server-side decision in every install, to be updated in step.
+//
+// So the notice stays identical whichever policy is in force. It under-claims in that case
+// (it says findings were raised, not that they will be fixed) but it says nothing false,
+// and the agent reports its actual edits in its own prose below, which is what the closing
+// instruction asks for.
 func ForceFixedCount(findings []wire.Finding) int {
 	n := 0
 	for _, f := range findings {

@@ -6,7 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/config"
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/notify"
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/update"
 )
 
 // runWith drives run() with the given args + stdin, capturing stdout/stderr. It
@@ -75,6 +77,82 @@ func TestRunStopWithoutConfigFailsOpen(t *testing.T) {
 	}
 	if strings.Contains(stdout, "decision") {
 		t.Errorf("notice must be NON-BLOCKING (no decision field), got %q", stdout)
+	}
+}
+
+// setLicenseNagEnv gives config.Load a working config (server_url + tier, no
+// key) without touching this machine's real ~/.config/leoprevent, and points
+// both the config and update packages' per-user-dir resolvers at fresh temp
+// dirs so a real enrolled key or a real daily-nag record on the box running
+// the test can never leak in.
+func setLicenseNagEnv(t *testing.T, enrollToken string) {
+	t.Helper()
+	t.Setenv(config.EnvServerURL, "https://example.invalid")
+	t.Setenv(config.EnvTier, config.TierCloud)
+	// ALWAYS set, even to "": this box's own real environment carries a live
+	// LEOPREVENT_ENROLL_TOKEN (this session's own enrolment), and t.Setenv only
+	// isolates a var it actually touches — an `if enrollToken != ""` guard here
+	// would leak that real token into the "no token" case instead of testing it.
+	t.Setenv(config.EnvEnrollToken, enrollToken)
+	t.Cleanup(config.SetUserConfigDirForTest(t.TempDir()))
+	t.Cleanup(update.SetUserConfigDirForTest(t.TempDir()))
+}
+
+// TestLicenseNagWaitsForEnrolmentThenNagsOncePerSession pins the fix for the
+// 2026-08-26 confusion: a machine with an enrolment token gets one silent
+// prompt (enroll.Ensure runs on that SAME turn's Stop hook, seconds later, so
+// there is nothing to report yet), then nags at most ONCE per session if the
+// key is still empty afterwards — never the once-per-day throttle a
+// token-less install uses, since re-nagging mid-session on a day boundary
+// would repeat the same "this session's attempt failed" fact for no new
+// reason.
+func TestLicenseNagWaitsForEnrolmentThenNagsOncePerSession(t *testing.T) {
+	setLicenseNagEnv(t, "lp_enroll_test_token")
+	sess := "enroll-nag-session"
+	notify.Clear(sess)
+	t.Cleanup(func() { notify.Clear(sess) })
+	stdin := `{"hook_event_name":"UserPromptSubmit","session_id":"` + sess + `","cwd":""}`
+
+	_, stdout1, stderr1 := runWith(t, []string{"--agent=claude"}, stdin)
+	if stdout1 != "" || stderr1 != "" {
+		t.Errorf("first prompt of a session must stay silent while a token is present "+
+			"(enrolment hasn't had a turn yet), got stdout=%q stderr=%q", stdout1, stderr1)
+	}
+
+	_, stdout2, _ := runWith(t, []string{"--agent=claude"}, stdin)
+	if !strings.Contains(stdout2, "no license key") {
+		t.Errorf("second prompt with the key still empty should nag once, got stdout=%q", stdout2)
+	}
+
+	_, stdout3, _ := runWith(t, []string{"--agent=claude"}, stdin)
+	if stdout3 != "" {
+		t.Errorf("a session must nag at most once, got a second nag: stdout=%q", stdout3)
+	}
+}
+
+// TestLicenseNagWithoutTokenFiresOnTheFirstPrompt locks in the UNCHANGED
+// behaviour for an install with no enrolment token: there is nothing for it
+// to wait on (this machine can never self-enrol), so it keeps nagging from
+// the first prompt, on the existing once-per-day-per-install throttle.
+func TestLicenseNagWithoutTokenFiresOnTheFirstPrompt(t *testing.T) {
+	setLicenseNagEnv(t, "")
+	sess, sess2 := "no-token-nag-session", "no-token-nag-session-2"
+	notify.Clear(sess)
+	notify.Clear(sess2)
+	t.Cleanup(func() { notify.Clear(sess); notify.Clear(sess2) })
+	stdin := `{"hook_event_name":"UserPromptSubmit","session_id":"` + sess + `","cwd":""}`
+
+	_, stdout1, _ := runWith(t, []string{"--agent=claude"}, stdin)
+	if !strings.Contains(stdout1, "no license key") {
+		t.Errorf("a token-less install has nothing to wait on, should nag on the first "+
+			"prompt, got stdout=%q", stdout1)
+	}
+
+	// Same day: the daily throttle (not the session gate) keeps it quiet on a
+	// second prompt, even in a brand new session.
+	_, stdout2, _ := runWith(t, []string{"--agent=claude"}, `{"hook_event_name":"UserPromptSubmit","session_id":"`+sess2+`","cwd":""}`)
+	if stdout2 != "" {
+		t.Errorf("the once-per-day throttle should still suppress a same-day repeat, got stdout=%q", stdout2)
 	}
 }
 

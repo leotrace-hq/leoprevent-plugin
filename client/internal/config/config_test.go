@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -243,5 +244,99 @@ func TestMissingDashboardURLIsNotAnError(t *testing.T) {
 	}
 	if c.DashboardURL != "" {
 		t.Errorf("DashboardURL = %q, want empty", c.DashboardURL)
+	}
+}
+
+// ── THIS MACHINE'S DEVICE ID (LEO-168) ──
+
+// TestEnsureDeviceIDIsStableAcrossCalls. It is what tells the server "this machine again" rather
+// than "a second machine", so a fresh id per call would take a new slot in the person's key set on
+// every enrolment and evict their other machines.
+func TestEnsureDeviceIDIsStableAcrossCalls(t *testing.T) {
+	clearEnv(t)
+	first := EnsureDeviceID()
+	if first == "" {
+		t.Fatal("no device id was generated")
+	}
+	if second := EnsureDeviceID(); second != first {
+		t.Errorf("device id changed between calls: %q then %q", first, second)
+	}
+}
+
+// TestEnsureDeviceIDPersistsBeforeTheCaller Enrols. An id generated, sent, and then lost because
+// the key write failed would make the next attempt a different machine — so it has to be on disk
+// by the time this returns, not written alongside the key afterwards.
+func TestEnsureDeviceIDPersistsBeforeTheCallerEnrols(t *testing.T) {
+	dir := isolateUserConfig(t)
+	id := EnsureDeviceID()
+	data, err := os.ReadFile(filepath.Join(dir, "leoprevent", UserLicenseFile))
+	if err != nil {
+		t.Fatalf("the device id was not written: %v", err)
+	}
+	if !strings.Contains(string(data), id) {
+		t.Errorf("the file does not carry the id it returned: %s", data)
+	}
+}
+
+// TestSaveLicensePreservesTheDeviceID is the regression that matters, and it fails against a
+// SaveLicense that marshals a fresh struct.
+//
+// `set-license` writes this same file. Overwriting it wholesale would silently make the machine a
+// NEW device to the server, taking a second slot in the person's own key set and leaving the entry
+// its previous id held live until the cap evicted it.
+func TestSaveLicensePreservesTheDeviceID(t *testing.T) {
+	clearEnv(t)
+	id := EnsureDeviceID()
+	if _, err := SaveLicense("lp_live_pasted"); err != nil {
+		t.Fatal(err)
+	}
+	if got := readUserLicenseFile(); got.DeviceID != id {
+		t.Errorf("device id = %q after set-license, want the pre-existing %q", got.DeviceID, id)
+	}
+	if got := readUserLicense(); got != "lp_live_pasted" {
+		t.Errorf("license key = %q, want the one just saved", got)
+	}
+}
+
+// TestADeviceIDSurvivesAKeyThatArrivedFirst: the other order, since enrolment writes the key and a
+// later turn may be the first to need an id.
+func TestADeviceIDSurvivesAKeyThatArrivedFirst(t *testing.T) {
+	clearEnv(t)
+	if _, err := SaveLicense("lp_live_first"); err != nil {
+		t.Fatal(err)
+	}
+	id := EnsureDeviceID()
+	if id == "" {
+		t.Fatal("no device id was generated")
+	}
+	got := readUserLicenseFile()
+	if got.LicenseKey != "lp_live_first" || got.DeviceID != id {
+		t.Errorf("the file lost one of the two facts: %+v", got)
+	}
+}
+
+// TestAFileWrittenBeforeDeviceIDsExistedStillLoads. Every machine already in the field has one, so
+// the absent field must read as "no id yet" and nothing more.
+func TestAFileWrittenBeforeDeviceIDsExistedStillLoads(t *testing.T) {
+	dir := isolateUserConfig(t)
+	path := filepath.Join(dir, "leoprevent", UserLicenseFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"license_key":"lp_live_legacy"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := readUserLicense(); got != "lp_live_legacy" {
+		t.Errorf("legacy key = %q, want lp_live_legacy", got)
+	}
+	if got := readUserLicenseFile().DeviceID; got != "" {
+		t.Errorf("device id = %q on a legacy file, want empty", got)
+	}
+	// And generating one must not lose the key that was already there.
+	if EnsureDeviceID() == "" {
+		t.Fatal("no device id was generated for a legacy file")
+	}
+	if got := readUserLicense(); got != "lp_live_legacy" {
+		t.Errorf("the key was lost when a device id was added: %q", got)
 	}
 }
