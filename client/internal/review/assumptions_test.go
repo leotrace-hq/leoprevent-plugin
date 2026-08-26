@@ -36,19 +36,19 @@ func TestParseAssumptionsAcceptsTheAskAsWritten(t *testing.T) {
 // only compared against AssumptionsAsk would pass.
 func TestFindingsPromptDoesNotAskForAssumptions(t *testing.T) {
 	prompts := map[string]string{
-		"introduced": BuildFindingsPrompt([]wire.Finding{{
+		"introduced": promptNoDirective([]wire.Finding{{
 			Rule: "ssrf", Name: "Server-Side Request Forgery",
 			Location: "app.py:12", Issue: "url comes from the request", Fix: "resolve and deny private ranges",
 		}}),
-		"preexisting": BuildFindingsPrompt([]wire.Finding{{
+		"preexisting": promptNoDirective([]wire.Finding{{
 			Rule: "ssrf", Name: "Server-Side Request Forgery",
 			Location: "old.py:3", Preexisting: true,
 		}}),
-		"suggest-only": BuildFindingsPrompt([]wire.Finding{{
+		"suggest-only": promptNoDirective([]wire.Finding{{
 			Rule: "proxy-path-handling", Name: "Proxy Path Handling",
 			Location: "nginx.conf:8", SuggestOnly: true,
 		}}),
-		"clean": BuildFindingsPrompt(nil),
+		"clean": BuildFindingsPrompt(nil, ""),
 	}
 	for branch, p := range prompts {
 		if strings.Contains(p, AssumptionsAsk) {

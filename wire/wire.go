@@ -311,6 +311,36 @@ type ReviewResponse struct {
 	// the audit event, nothing gates on it (it is poorly calibrated).
 	Confidence int       `json:"confidence,omitempty"`
 	Findings   []Finding `json:"findings,omitempty"`
+	// PreexistingDirective is the SERVER-AUTHORED paragraph the client renders verbatim
+	// above the PRE-EXISTING findings — the text that tells the agent what to do about code
+	// it did not write (LEO-171). Empty means the client uses its own compiled-in default,
+	// which is the conservative report-it-to-the-developer wording it has always shipped.
+	//
+	// ⚠️ IT IS ON THE WIRE SO THE WORDING IS NOT HOSTAGE TO A PLUGIN RELEASE. This text is
+	// a prompt: it will be tuned, repeatedly, against how real agents behave. Compiled into
+	// the client, every revision would need a build, a marketplace publish and then every
+	// developer's install to update — and until they all had, different developers would be
+	// getting different instructions with nothing saying so. Server-side, a reword is one
+	// deploy and applies to every install at once.
+	//
+	// Same posture as the local tier's meta-policy, which the client also renders verbatim
+	// from the server rather than holding a copy of.
+	//
+	// ⚠️ IT IS THE ONLY THING THAT VARIES, AND THERE IS DELIBERATELY NO COMPANION FLAG.
+	// An earlier draft paired it with a per-finding `remediate_preexisting` boolean so the
+	// client could group and count differently. That is exactly what must not exist: the
+	// client would then hold a copy of a server-side policy, would have to be updated in
+	// step with it, and the difference would surface in the developer's own notice. The
+	// server decides by choosing the words; the client renders one group, one paragraph,
+	// one code path, and cannot tell which policy produced the text it was handed.
+	//
+	// Consequence to keep in mind rather than fix: the suggest-only exclusion is not
+	// expressed here at all. It does not need to be — a suggest-only finding is already a
+	// separate group on the client, so it can never be reached by this paragraph.
+	//
+	// It is rendered VERBATIM and must therefore stay plain text: no markdown, no
+	// backticks. The client injects the re-wake as plain text, so markup renders literally.
+	PreexistingDirective string `json:"preexisting_directive,omitempty"`
 	// ReviewID correlates a later OutcomeRequest back to this review (server-minted
 	// on a triggered review). The client stashes it with the findings + the "before"
 	// code and echoes it on /outcome once the agent has (maybe) fixed the diff.

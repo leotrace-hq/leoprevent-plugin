@@ -74,7 +74,7 @@ func TestBuildPromptOmitsEmptyCarveOut(t *testing.T) {
 func TestPromptPrefixMatchesCodexMarker(t *testing.T) {
 	const codexReWakeMarker = "🔒 LeoPrevent: security review" // = transcript.reWakeMarker
 	localPrompt := BuildPrompt(ssrfChanges, []rulespec.Rule{ssrfRule}, metaPolicy)
-	cloudPrompt := BuildFindingsPrompt([]wire.Finding{{Rule: "ssrf", Location: "app.py:4"}})
+	cloudPrompt := promptNoDirective([]wire.Finding{{Rule: "ssrf", Location: "app.py:4"}})
 	if !strings.HasPrefix(localPrompt, codexReWakeMarker) {
 		t.Errorf("local prompt opening drifted from the Codex marker %q: %.40q", codexReWakeMarker, localPrompt)
 	}
@@ -86,7 +86,7 @@ func TestPromptPrefixMatchesCodexMarker(t *testing.T) {
 // TestBuildFindingsPrompt (cloud tier): the server already judged, so the prompt
 // instructs the agent to apply each finding's fix, with location and fix text.
 func TestBuildFindingsPrompt(t *testing.T) {
-	prompt := BuildFindingsPrompt([]wire.Finding{{
+	prompt := promptNoDirective([]wire.Finding{{
 		Rule:     "ssrf",
 		Name:     "Server-Side Request Forgery", // server fills the human name
 		Location: "app.py:4",
@@ -124,7 +124,7 @@ func TestFindingSpanRendersAsARangeInBothOutputs(t *testing.T) {
 		Rule: "ssrf", Name: "Server-Side Request Forgery",
 		Location: "app.py:42", EndLine: 58, Issue: "unvalidated fetch", Fix: "resolve first",
 	}
-	prompt := BuildFindingsPrompt([]wire.Finding{f})
+	prompt := promptNoDirective([]wire.Finding{f})
 	if !strings.Contains(prompt, "app.py:42-58") {
 		t.Errorf("re-wake must name the span:\n%s", prompt)
 	}
@@ -140,7 +140,7 @@ func TestFindingSpanRendersAsARangeInBothOutputs(t *testing.T) {
 	// No span ⇒ byte-identical to what a single-line finding always produced.
 	plain := f
 	plain.EndLine = 0
-	if got := BuildFindingsPrompt([]wire.Finding{plain}); !strings.Contains(got, "app.py:42") || strings.Contains(got, "42-") {
+	if got := promptNoDirective([]wire.Finding{plain}); !strings.Contains(got, "app.py:42") || strings.Contains(got, "42-") {
 		t.Errorf("a single-line finding must render unchanged:\n%s", got)
 	}
 }
@@ -150,7 +150,7 @@ func TestFindingSpanRendersAsARangeInBothOutputs(t *testing.T) {
 // "handler-58" would read as a line number that is not one — there is no start for the
 // end to be relative to.
 func TestFindingSpanIsNotAppendedToALocationWithoutALine(t *testing.T) {
-	got := BuildFindingsPrompt([]wire.Finding{
+	got := promptNoDirective([]wire.Finding{
 		{Rule: "ssrf", Name: "SSRF", Location: "app.py:fetch_url", EndLine: 58, Issue: "i", Fix: "f"},
 	})
 	if strings.Contains(got, "58") {
@@ -162,7 +162,7 @@ func TestFindingSpanIsNotAppendedToALocationWithoutALine(t *testing.T) {
 // ("don't ask"); pre-existing ones are surfaced with an explicit "ask the developer,
 // don't fix now" instruction. The two are clearly separated.
 func TestBuildFindingsPrompt_SplitsPreexisting(t *testing.T) {
-	prompt := BuildFindingsPrompt([]wire.Finding{
+	prompt := promptNoDirective([]wire.Finding{
 		{Rule: "ssrf", Name: "Server-Side Request Forgery", Location: "app.py:12", Issue: "new vuln", Fix: "resolve to IP"},
 		{Rule: "open-redirect", Name: "Open Redirect", Location: "app.py:3", Issue: "old vuln", Fix: "allowlist", Preexisting: true},
 	})
@@ -185,7 +185,7 @@ func TestBuildFindingsPrompt_SplitsPreexisting(t *testing.T) {
 // NewlyReached gets the per-finding heads-up that the agent's new code routes into it —
 // while staying in the surfaced (ask, don't force-fix) section.
 func TestBuildFindingsPrompt_NewlyReachedLabel(t *testing.T) {
-	prompt := BuildFindingsPrompt([]wire.Finding{
+	prompt := promptNoDirective([]wire.Finding{
 		{Rule: "ssrf", Name: "Server-Side Request Forgery", Location: "helpers.py:9", Issue: "old sink", Fix: "resolve", Preexisting: true, NewlyReached: true},
 	})
 	if strings.Contains(prompt, "fix before finishing this turn") {
@@ -199,7 +199,7 @@ func TestBuildFindingsPrompt_NewlyReachedLabel(t *testing.T) {
 // TestBuildFindingsPrompt_PreexistingOnly: a clean change that only surfaces a
 // pre-existing issue must NOT tell the agent to "fix before finishing" — it asks.
 func TestBuildFindingsPrompt_PreexistingOnly(t *testing.T) {
-	prompt := BuildFindingsPrompt([]wire.Finding{
+	prompt := promptNoDirective([]wire.Finding{
 		{Rule: "open-redirect", Name: "Open Redirect", Location: "app.py:3", Issue: "old", Fix: "allowlist", Preexisting: true},
 	})
 	if strings.Contains(prompt, "fix before finishing this turn") {
@@ -255,14 +255,20 @@ func TestRewakeJSONCarriesBanner(t *testing.T) {
 // is surfaced for manual review and NEVER force-fixed — even when introduced this
 // turn (no Preexisting flag). It must not land in the "fix before finishing" block.
 func TestBuildFindingsPrompt_SuggestOnly(t *testing.T) {
-	prompt := BuildFindingsPrompt([]wire.Finding{
+	prompt := promptNoDirective([]wire.Finding{
 		{Rule: "proxy-path-handling", Name: "Proxy Path Handling", Location: "nginx.conf:10", Issue: "alias traversal", Fix: "add trailing slash", SuggestOnly: true},
 	})
 	if strings.Contains(prompt, "fix before finishing this turn") {
 		t.Errorf("suggest-only must not be force-fixed:\n%s", prompt)
 	}
-	if !strings.Contains(prompt, "does NOT auto-apply") {
-		t.Errorf("suggest-only must explain it is not auto-applied:\n%s", prompt)
+	// The PROPERTY, not the prose: this group is the developer's call and the agent is not
+	// to fix it now. The old assertion was on "does NOT auto-apply", which was wording that
+	// implied LeoPrevent edits code — see TestNoCopyClaimsLeoPreventEditsCode.
+	if !strings.Contains(prompt, "for the developer to decide on") {
+		t.Errorf("suggest-only must say it is the developer's decision:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "not for you to fix now") {
+		t.Errorf("suggest-only must tell the agent not to fix it in-turn:\n%s", prompt)
 	}
 	if !strings.HasPrefix(prompt, "🔒 LeoPrevent: security review") {
 		t.Errorf("must keep the Codex marker prefix:\n%.40q", prompt)
@@ -278,12 +284,12 @@ func TestBuildFindingsPrompt_SuggestOnly(t *testing.T) {
 // suggest-only rule is surfaced, not force-fixed; an introduced finding on a normal
 // rule in the same batch is still force-fixed.
 func TestBuildFindingsPrompt_SuggestOnlyWinsOverIntroduced(t *testing.T) {
-	prompt := BuildFindingsPrompt([]wire.Finding{
+	prompt := promptNoDirective([]wire.Finding{
 		{Rule: "ssrf", Name: "Server-Side Request Forgery", Location: "app.py:12", Issue: "new vuln", Fix: "resolve to IP"},
 		{Rule: "proxy-path-handling", Name: "Proxy Path Handling", Location: "nginx.conf:10", Issue: "alias traversal", Fix: "trailing slash", SuggestOnly: true},
 	})
 	fixIdx := strings.Index(prompt, "fix before finishing this turn")
-	sugIdx := strings.Index(prompt, "does NOT auto-apply")
+	sugIdx := strings.Index(prompt, "for the developer to decide on")
 	if fixIdx < 0 || sugIdx < 0 || fixIdx > sugIdx {
 		t.Fatalf("expected force-fix section before the suggest-only section:\n%s", prompt)
 	}

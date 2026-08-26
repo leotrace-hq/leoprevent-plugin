@@ -224,6 +224,13 @@ func (h Cloud) Review(cwd string, changes []transcript.Change, meta wire.TurnMet
 		if resp.ReviewID == "" {
 			resp.ReviewID = br.ReviewID
 		}
+		// The pre-existing remediation directive is the SERVER's wording, and every batch
+		// of one turn carries the same account policy — so take the FIRST non-empty one
+		// rather than appending. Concatenating would print the instruction paragraph once
+		// per batch above a single merged group.
+		if resp.PreexistingDirective == "" {
+			resp.PreexistingDirective = br.PreexistingDirective
+		}
 	}
 	if len(batches) > 1 {
 		slog.Info("cloud: review split into batches (change set exceeded request budget)",
@@ -232,7 +239,7 @@ func (h Cloud) Review(cwd string, changes []transcript.Change, meta wire.TurnMet
 
 	var prompt string
 	if resp.Verdict != wire.VerdictClean && len(resp.Findings) > 0 {
-		prompt = review.BuildFindingsPrompt(resp.Findings)
+		prompt = review.BuildFindingsPrompt(resp.Findings, resp.PreexistingDirective)
 	}
 
 	// Cloud-tier client logging (PLUGIN-side client.log; the server keeps its own
