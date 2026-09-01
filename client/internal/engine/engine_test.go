@@ -1040,3 +1040,28 @@ func TestLedgerIsNotClassifiedOnAnOrdinaryTurn(t *testing.T) {
 		t.Errorf("an ordinary turn must spend no classification call: %+v", r.reasonCalls)
 	}
 }
+
+// changedRepoRoots feeds the identity retry, so its ORDER is part of the answer: `changes`
+// arrives however git listed the diff, and taking the first configured identity off that order
+// would make a two-repo turn's attribution depend on it. Sorted, so the same workspace resolves
+// the same way every turn. Same reasoning the imports resolver records for `candidate.named`.
+func TestChangedRepoRootsAreDedupedAndSorted(t *testing.T) {
+	got := changedRepoRoots("/w", []transcript.Change{
+		{FilePath: "beta/x.py", RepoDir: "beta"},
+		{FilePath: "alpha/y.py", RepoDir: "alpha"},
+		{FilePath: "beta/z.py", RepoDir: "beta"},
+		{FilePath: "top.py"}, // cwd IS the repo — DeveloperFrom already read it
+	})
+	want := []string{filepath.Join("/w", "alpha"), filepath.Join("/w", "beta")}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("changedRepoRoots = %v, want %v", got, want)
+	}
+}
+
+func TestChangedRepoRootsRefusesAnEmptyCwd(t *testing.T) {
+	// `git -C ""` silently runs in the hook process's own directory, so a joined path from
+	// an empty cwd would read some unrelated repository's config as the developer's.
+	if got := changedRepoRoots("", []transcript.Change{{FilePath: "a/x.py", RepoDir: "a"}}); got != nil {
+		t.Errorf("changedRepoRoots with no cwd = %v, want nil", got)
+	}
+}

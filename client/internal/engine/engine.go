@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -256,6 +257,22 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 	// Silent when several changed: see soleRepoOrigin.
 	if meta.Repo == "" {
 		meta.Repo = soleRepoOrigin(ev.Cwd, changes)
+	}
+	// Same correction for the identity: turnMeta read it from cwd, which holds no git
+	// config of its own when cwd is a folder HOLDING repositories. Retry against the
+	// roots that actually changed before settling for what git could synthesize.
+	if meta.DeveloperSource != wire.DevSourceConfig {
+		meta.Developer, meta.DeveloperSource = vcs.DeveloperFrom(ev.Cwd, changedRepoRoots(ev.Cwd, changes)...)
+	}
+	// ⚠️ SAY SO WHEN THERE IS NO CONFIGURED IDENTITY. Every turn from such a machine is
+	// attributed by its seat alone, and an address git assembled from the hostname is not
+	// a real one — a fact worth one line on the developer's own machine, since the
+	// alternative is what already happened once: two weeks of turns whose attribution
+	// nobody could explain from either side.
+	if meta.DeveloperSource != wire.DevSourceConfig && meta.DeveloperSource != wire.DevSourceRepo {
+		log.Info("no configured git identity for this turn",
+			"developer_source", meta.DeveloperSource,
+			"hint", "set git user.name and user.email to attribute turns by git identity as well as by seat")
 	}
 	// Where the tree started, and how many files were excluded as already-published
 	// (a mid-turn checkout/pull/merge imports somebody else's merged commits). The
@@ -633,11 +650,15 @@ func turnMeta(a agent.Agent, ev agent.Event, log *slog.Logger, now time.Time) wi
 	// never the transcript, so a transcript that failed to parse must not cost us a
 	// fact we still know. Total by contract — no error to handle.
 	env := a.Environment(ev)
+	// Resolved from cwd here; Run retries against the changed repositories' roots when
+	// that came back with nothing, exactly as it does for Repo.
+	dev, devSrc := vcs.DeveloperFrom(ev.Cwd)
 	return wire.TurnMeta{
 		Agent:               a.Name(),
 		AgentModel:          m.AgentModel,
 		Repo:                vcs.RepoOrigin(ev.Cwd),
-		Developer:           vcs.Developer(ev.Cwd),
+		Developer:           dev,
+		DeveloperSource:     devSrc,
 		OS:                  runtime.GOOS,      // the dev machine's platform — compiled in, always known
 		Arch:                runtime.GOARCH,    // NB on ARM Windows this reads amd64: we ship one x64 exe
 		ClientVersion:       buildinfo.Version, // which plugin build produced this turn ("dev" when unstamped)
@@ -713,6 +734,33 @@ func dropSecrets(changes []transcript.Change, log *slog.Logger) []transcript.Cha
 // arbitrary one of them, which is worse than the blank these turns carried before —
 // a wrong attribution reads as fact, a blank reads as unknown. Same discipline as
 // BaselineHead, which is recorded only when there is one commit to name.
+// changedRepoRoots returns the absolute roots of the repositories this turn changed,
+// deduplicated and SORTED.
+//
+// Sorted rather than first-seen: `changes` arrives in whatever order git listed the diff,
+// and an identity picked off that order would make a two-repo turn's attribution depend
+// on it. The same reasoning the imports resolver records for `candidate.named`.
+func changedRepoRoots(cwd string, changes []transcript.Change) []string {
+	if cwd == "" {
+		return nil
+	}
+	seen := map[string]bool{}
+	var roots []string
+	for _, c := range changes {
+		if c.RepoDir == "" {
+			continue // cwd IS the repo, which DeveloperFrom already read
+		}
+		dir := filepath.Join(cwd, filepath.FromSlash(c.RepoDir))
+		if seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		roots = append(roots, dir)
+	}
+	sort.Strings(roots)
+	return roots
+}
+
 func soleRepoOrigin(cwd string, changes []transcript.Change) string {
 	if cwd == "" || len(changes) == 0 {
 		return ""

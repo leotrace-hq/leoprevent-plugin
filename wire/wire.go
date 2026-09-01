@@ -80,7 +80,25 @@ type TurnMeta struct {
 	AgentModel string `json:"agent_model,omitempty"` // the model, e.g. "claude-opus-4-8" (from the transcript; blank for Copilot — no transcript model)
 	Repo       string `json:"repo,omitempty"`        // normalized git origin "host/org/repo" (the "app")
 	Developer  string `json:"developer,omitempty"`   // git user "Name <email>" (PII; attribution)
-	Prompt     string `json:"prompt,omitempty"`      // BODY: the dev's turn-start prompt; dropped on clean / bodies-off
+	// DeveloperSource says WHERE Developer came from — one of the DevSource* values
+	// below. Metadata, always retained, same character as OS/Arch/ClientVersion.
+	//
+	// ⚠️ IT EXISTS BECAUSE AN ABSENT IDENTITY USED TO BE INDISTINGUISHABLE FROM EVERY
+	// OTHER BLANK, and that hid a live fault for a fortnight. A machine with no git
+	// `user.name` / `user.email` sent `developer: ""`, exactly like an older client, a
+	// git error or a non-repo directory; the turns were then dropped from the
+	// leaderboard as unattributable and the developer's own row read as somebody who
+	// had never installed the plugin (fixed at read time in packages/metrics, which is
+	// what makes THAT retroactive — this field is forward-only and answers the
+	// different question of how often it happens and to whom).
+	//
+	// ⚠️ AND A SYNTHESIZED IDENTITY MUST BE MARKED AS ONE. DevSourceIdent means git
+	// assembled `Name <user@hostname>` from the OS passwd entry: useful, and NOT a real
+	// address, though it is shaped exactly like one. Any surface that treats
+	// `developer` as somebody's contact address, or joins it to a roster, has to be
+	// able to tell the two apart — which is only possible if the fact travels.
+	DeveloperSource string `json:"developer_source,omitempty"`
+	Prompt          string `json:"prompt,omitempty"` // BODY: the dev's turn-start prompt; dropped on clean / bodies-off
 	// OS/Arch are the DEVELOPER MACHINE's platform, from the client binary's own
 	// runtime.GOOS/GOARCH — so they are always known and never parsed (unlike
 	// AgentModel, which depends on a transcript). Metadata, not PII: the answer to
@@ -294,6 +312,35 @@ const (
 	// the field doc. Pair it with EnvironmentRaw to tell a brand-new vendor surface
 	// apart from no signal at all.
 	EnvUnknown = "unknown"
+)
+
+// DeveloperSource values for TurnMeta.DeveloperSource — a CLOSED vocabulary, like the
+// Env* set above, so the field stays groupable rather than becoming free text.
+//
+// EMPTY is a fourth state and is NOT DevSourceNone: it means a client too old to report
+// one, and it self-heals as installs update. DevSourceNone is a CURRENT client saying it
+// looked and there was nothing to find. Never merge the two in a query or a UI — that
+// conflation is the whole reason this field exists.
+const (
+	// DevSourceConfig — `user.name` / `user.email` as configured, from the directory the
+	// turn ran in. What we want, and what the great majority of turns carry.
+	DevSourceConfig = "git_config"
+	// DevSourceRepo — the same keys, but read from a CHANGED REPOSITORY's root because
+	// the turn's own directory had none. That happens when the agent is opened on a
+	// folder HOLDING repositories rather than on one (the workspace layout), where the
+	// per-repo config is real and simply out of scope from the parent.
+	DevSourceRepo = "repo_config"
+	// DevSourceIdent — git RESOLVED an identity where config had none, i.e.
+	// `Name <user@hostname>` assembled from the OS passwd entry.
+	//
+	// ⚠️ THE ADDRESS IN IT IS NOT REAL. It is shaped like one and belongs to no mailbox,
+	// so it must never be offered as a way to reach anybody, and a value carrying this
+	// source is the machine's guess at its own user rather than a stated identity.
+	DevSourceIdent = "git_ident"
+	// DevSourceNone — nothing was resolvable: not a git repo, a git error, or a machine
+	// with no identity and no passwd entry git would use. `developer` is then empty and
+	// the turn is attributed by its SEAT alone (see packages/metrics `engRowKey`).
+	DevSourceNone = "none"
 )
 
 // Verdict values for ReviewResponse.
