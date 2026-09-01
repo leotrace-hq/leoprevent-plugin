@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -76,6 +77,12 @@ type Reviewer interface {
 	// an unscored response is an error (outcome.ErrUnscored), so an empty stillFiring
 	// with a nil error genuinely means everything resolved.
 	ShipResolution(p outcome.Pending, after []transcript.Change, meta wire.TurnMeta) (stillFiring []wire.Finding, err error)
+	// ShipReasons asks the server to record WHY the carried findings are still open, from
+	// this turn's own words, re-judging nothing. It exists because the developer's decision
+	// usually lands on a LATER turn than the block — see wire.OutcomeRequest.ReasonsOnly.
+	// Cloud POSTs /outcome with Resolution+ReasonsOnly; local is a no-op. Best-effort: the
+	// ledger is never changed by it, so a failure costs a label and nothing else.
+	ShipReasons(p outcome.Pending, prompt, reply string, meta wire.TurnMeta) error
 	// ShipTelemetry reports the coding agent's turn metadata for a turn that did NOT
 	// trigger a review (no changed files, or every change inert), so per-prompt
 	// cost/latency analytics covers EVERY turn — not only reviewed ones. Cloud POSTs
@@ -250,6 +257,22 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 	// Silent when several changed: see soleRepoOrigin.
 	if meta.Repo == "" {
 		meta.Repo = soleRepoOrigin(ev.Cwd, changes)
+	}
+	// Same correction for the identity: turnMeta read it from cwd, which holds no git
+	// config of its own when cwd is a folder HOLDING repositories. Retry against the
+	// roots that actually changed before settling for what git could synthesize.
+	if meta.DeveloperSource != wire.DevSourceConfig {
+		meta.Developer, meta.DeveloperSource = vcs.DeveloperFrom(ev.Cwd, changedRepoRoots(ev.Cwd, changes)...)
+	}
+	// ⚠️ SAY SO WHEN THERE IS NO CONFIGURED IDENTITY. Every turn from such a machine is
+	// attributed by its seat alone, and an address git assembled from the hostname is not
+	// a real one — a fact worth one line on the developer's own machine, since the
+	// alternative is what already happened once: two weeks of turns whose attribution
+	// nobody could explain from either side.
+	if meta.DeveloperSource != wire.DevSourceConfig && meta.DeveloperSource != wire.DevSourceRepo {
+		log.Info("no configured git identity for this turn",
+			"developer_source", meta.DeveloperSource,
+			"hint", "set git user.name and user.email to attribute turns by git identity as well as by seat")
 	}
 	// Where the tree started, and how many files were excluded as already-published
 	// (a mid-turn checkout/pull/merge imports somebody else's merged commits). The
@@ -517,6 +540,28 @@ func resolveLedger(r Reviewer, sessionID string, changes []transcript.Change, me
 	if err := outcome.SaveLedger(sessionID, kept); err != nil {
 		log.Debug("update cross-turn ledger failed (continuing)", "err", err.Error())
 	}
+
+	// ⚠️ THE DECISION USUALLY LANDS ON A TURN THAT CHANGED NO FLAGGED FILE, so everything
+	// above misses it. `/outcome` fires at the SECOND Stop of the turn that blocked, which
+	// means its reply predates the developer answering: "generate some code" blocks, the
+	// agent explains, and the ticket is raised on the NEXT turn in response to "create an
+	// issue". That turn edits nothing the ledger names, so the loop above carries every
+	// entry untouched and the ticket is never recorded — on the exact shape LEO-138 exists
+	// for.
+	//
+	// So when this turn's own words suggest a follow-up was arranged, ask the server to
+	// CLASSIFY the still-open findings and re-judge nothing. Gated because this runs on
+	// every ordinary turn while the ledger holds anything; best-effort because it changes
+	// no state — a failure costs a label and the entry stays exactly as it is.
+	if len(kept) > 0 && review.MentionsFollowUp(meta.Prompt, meta.AgentNote) {
+		for _, e := range kept {
+			if err := r.ShipReasons(e, meta.Prompt, meta.AgentNote, meta); err != nil {
+				log.Debug("reasons-only resolution failed (best-effort, ignoring)", "review_id", e.ReviewID, "err", err.Error())
+				continue
+			}
+			log.Info("classified why carried findings are still open", "review_id", e.ReviewID, "open", len(e.Findings))
+		}
+	}
 	return resolvedIDs
 }
 
@@ -605,11 +650,15 @@ func turnMeta(a agent.Agent, ev agent.Event, log *slog.Logger, now time.Time) wi
 	// never the transcript, so a transcript that failed to parse must not cost us a
 	// fact we still know. Total by contract — no error to handle.
 	env := a.Environment(ev)
+	// Resolved from cwd here; Run retries against the changed repositories' roots when
+	// that came back with nothing, exactly as it does for Repo.
+	dev, devSrc := vcs.DeveloperFrom(ev.Cwd)
 	return wire.TurnMeta{
 		Agent:               a.Name(),
 		AgentModel:          m.AgentModel,
 		Repo:                vcs.RepoOrigin(ev.Cwd),
-		Developer:           vcs.Developer(ev.Cwd),
+		Developer:           dev,
+		DeveloperSource:     devSrc,
 		OS:                  runtime.GOOS,      // the dev machine's platform — compiled in, always known
 		Arch:                runtime.GOARCH,    // NB on ARM Windows this reads amd64: we ship one x64 exe
 		ClientVersion:       buildinfo.Version, // which plugin build produced this turn ("dev" when unstamped)
@@ -685,6 +734,33 @@ func dropSecrets(changes []transcript.Change, log *slog.Logger) []transcript.Cha
 // arbitrary one of them, which is worse than the blank these turns carried before —
 // a wrong attribution reads as fact, a blank reads as unknown. Same discipline as
 // BaselineHead, which is recorded only when there is one commit to name.
+// changedRepoRoots returns the absolute roots of the repositories this turn changed,
+// deduplicated and SORTED.
+//
+// Sorted rather than first-seen: `changes` arrives in whatever order git listed the diff,
+// and an identity picked off that order would make a two-repo turn's attribution depend
+// on it. The same reasoning the imports resolver records for `candidate.named`.
+func changedRepoRoots(cwd string, changes []transcript.Change) []string {
+	if cwd == "" {
+		return nil
+	}
+	seen := map[string]bool{}
+	var roots []string
+	for _, c := range changes {
+		if c.RepoDir == "" {
+			continue // cwd IS the repo, which DeveloperFrom already read
+		}
+		dir := filepath.Join(cwd, filepath.FromSlash(c.RepoDir))
+		if seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		roots = append(roots, dir)
+	}
+	sort.Strings(roots)
+	return roots
+}
+
 func soleRepoOrigin(cwd string, changes []transcript.Change) string {
 	if cwd == "" || len(changes) == 0 {
 		return ""

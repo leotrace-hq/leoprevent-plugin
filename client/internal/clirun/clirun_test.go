@@ -49,6 +49,8 @@ func (f *fakeReviewer) ShipOutcome(p outcome.Pending, after []transcript.Change,
 	return nil, nil, nil
 }
 
+func (f *fakeReviewer) ShipReasons(_ outcome.Pending, _, _ string, _ wire.TurnMeta) error { return nil }
+
 func (f *fakeReviewer) ShipResolution(_ outcome.Pending, _ []transcript.Change, _ wire.TurnMeta) ([]wire.Finding, error) {
 	return nil, nil
 }

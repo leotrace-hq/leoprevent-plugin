@@ -26,7 +26,18 @@ import (
 )
 
 // fakeReviewer records whether it was called and returns a scripted result.
+// reasonCall is one reasons-only resolution (the next-turn ticket capture).
+type reasonCall struct {
+	ReviewID string
+	Prompt   string
+	Reply    string
+	Findings []wire.Finding
+}
+
 type fakeReviewer struct {
+	reasonCalls []reasonCall
+	reasonErr   error
+
 	prompt     string
 	pending    *outcome.Pending
 	err        error
@@ -73,6 +84,12 @@ func (f *fakeReviewer) ShipOutcome(p outcome.Pending, after []transcript.Change,
 		return nil, nil, f.shipErr
 	}
 	return f.outcomeStillFiring, f.outcomePreFiring, nil
+}
+
+// reasonCalls records the reasons-only resolutions — the next-turn ticket capture.
+func (f *fakeReviewer) ShipReasons(p outcome.Pending, prompt, reply string, _ wire.TurnMeta) error {
+	f.reasonCalls = append(f.reasonCalls, reasonCall{ReviewID: p.ReviewID, Prompt: prompt, Reply: reply, Findings: p.Findings})
+	return f.reasonErr
 }
 
 func (f *fakeReviewer) ShipResolution(p outcome.Pending, after []transcript.Change, _ wire.TurnMeta) ([]wire.Finding, error) {
@@ -952,5 +969,99 @@ func TestTelemetryCarriesTheEnvironment(t *testing.T) {
 	}
 	if r.telemetryMeta.Environment != wire.EnvClaudeTerminal {
 		t.Errorf("telemetry Environment = %q, want %q", r.telemetryMeta.Environment, wire.EnvClaudeTerminal)
+	}
+}
+
+// ⚠️ THE TURN THAT DECIDES IS NOT THE TURN THAT BLOCKED, and before this the decision was
+// invisible. `/outcome` fires at the second Stop of the blocked turn, so the reply it carries
+// predates the developer answering:
+//
+//	turn 1  "generate some code"  → block → agent explains → /outcome ships HERE
+//	turn 2  "create an issue"     → the ticket is raised, and NO flagged file changes
+//
+// The loop in resolveLedger only re-judges entries whose file was touched, so turn 2 carried
+// every entry untouched and nothing recorded the ticket — on the exact shape LEO-138 is for.
+func TestLaterTurnTicketIsClassifiedWithoutAReJudge(t *testing.T) {
+	session := "sess-reasons-" + t.Name()
+	t.Cleanup(func() { _ = outcome.SaveLedger(session, nil) })
+	if err := outcome.SaveLedger(session, []outcome.Pending{{
+		ReviewID: "rid-1",
+		Findings: []wire.Finding{{Rule: "hardcoded-secrets", Location: "cfg.py:3", Preexisting: true}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeReviewer{}
+
+	// Turn 2: the ticket is raised, and NOTHING the ledger names is edited.
+	resolved := resolveLedger(r, session, []transcript.Change{{FilePath: "unrelated.ts", FullContent: "x\n"}},
+		wire.TurnMeta{Prompt: "create an issue for that hardcoded secret", AgentNote: "Opened ENT-4585 for it."},
+		slog.Default())
+
+	// Nothing is credited as resolved — nothing was fixed, and nothing was re-judged.
+	if len(resolved) != 0 {
+		t.Errorf("a reasons-only turn must credit no resolution: %v", resolved)
+	}
+	if r.resolutionCalls != 0 {
+		t.Error("the ordinary resolution must NOT fire: no flagged file changed")
+	}
+	// But the decision IS captured, with both this turn's own words.
+	if len(r.reasonCalls) != 1 {
+		t.Fatalf("want 1 reasons-only call, got %d", len(r.reasonCalls))
+	}
+	c := r.reasonCalls[0]
+	if c.ReviewID != "rid-1" || c.Prompt == "" || c.Reply == "" {
+		t.Errorf("reasons call missing the origin review or this turn's words: %+v", c)
+	}
+	// ⚠️ AND THE LEDGER IS UNTOUCHED. The flaw is still in the code, so it must stay carried:
+	// a ticket is not a fix, and dropping the entry here would silently stop crediting the
+	// real fix when it lands.
+	if got := outcome.LoadLedger(session); len(got) != 1 || len(got[0].Findings) != 1 {
+		t.Errorf("the entry must remain open in the ledger: %+v", got)
+	}
+}
+
+// The gate is what stops this firing on every ordinary turn for the ledger's whole 6h life.
+func TestLedgerIsNotClassifiedOnAnOrdinaryTurn(t *testing.T) {
+	session := "sess-noreasons-" + t.Name()
+	t.Cleanup(func() { _ = outcome.SaveLedger(session, nil) })
+	if err := outcome.SaveLedger(session, []outcome.Pending{{
+		ReviewID: "rid-1",
+		Findings: []wire.Finding{{Rule: "hardcoded-secrets", Location: "cfg.py:3", Preexisting: true}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	r := &fakeReviewer{}
+
+	resolveLedger(r, session, []transcript.Change{{FilePath: "unrelated.ts", FullContent: "x\n"}},
+		wire.TurnMeta{Prompt: "keep going", AgentNote: "Renamed the helper and updated its callers."},
+		slog.Default())
+
+	if len(r.reasonCalls) != 0 {
+		t.Errorf("an ordinary turn must spend no classification call: %+v", r.reasonCalls)
+	}
+}
+
+// changedRepoRoots feeds the identity retry, so its ORDER is part of the answer: `changes`
+// arrives however git listed the diff, and taking the first configured identity off that order
+// would make a two-repo turn's attribution depend on it. Sorted, so the same workspace resolves
+// the same way every turn. Same reasoning the imports resolver records for `candidate.named`.
+func TestChangedRepoRootsAreDedupedAndSorted(t *testing.T) {
+	got := changedRepoRoots("/w", []transcript.Change{
+		{FilePath: "beta/x.py", RepoDir: "beta"},
+		{FilePath: "alpha/y.py", RepoDir: "alpha"},
+		{FilePath: "beta/z.py", RepoDir: "beta"},
+		{FilePath: "top.py"}, // cwd IS the repo — DeveloperFrom already read it
+	})
+	want := []string{filepath.Join("/w", "alpha"), filepath.Join("/w", "beta")}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("changedRepoRoots = %v, want %v", got, want)
+	}
+}
+
+func TestChangedRepoRootsRefusesAnEmptyCwd(t *testing.T) {
+	// `git -C ""` silently runs in the hook process's own directory, so a joined path from
+	// an empty cwd would read some unrelated repository's config as the developer's.
+	if got := changedRepoRoots("", []transcript.Change{{FilePath: "a/x.py", RepoDir: "a"}}); got != nil {
+		t.Errorf("changedRepoRoots with no cwd = %v, want nil", got)
 	}
 }

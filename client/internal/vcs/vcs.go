@@ -48,6 +48,7 @@ import (
 
 	"github.com/leotrace-hq/leoprevent-plugin/client/internal/transcript"
 	"github.com/leotrace-hq/leoprevent-plugin/limits"
+	"github.com/leotrace-hq/leoprevent-plugin/wire"
 )
 
 // Whole-file context gather caps live in the limits package
@@ -1006,10 +1007,61 @@ func validHostPath(s string) string {
 	return ""
 }
 
-// Developer returns the configured git user as "Name <email>" — the attribution
-// for analytics ("which engineer"). Falls back to whichever of name/email is set,
-// or "" if neither (not a git repo / unconfigured).
+// Developer returns the git user as "Name <email>" — the attribution for analytics
+// ("which engineer"), or "" when this machine has no resolvable identity at all.
+//
+// Prefer DeveloperFrom, which reports WHERE the answer came from. This wrapper exists
+// for the callers that only need the string (clirun, enroll).
 func Developer(cwd string) string {
+	id, _ := DeveloperFrom(cwd)
+	return id
+}
+
+// DeveloperFrom returns the git identity and the wire.Dev* source that produced it.
+//
+// alsoTry names further directories to read CONFIG from when the turn's own directory
+// has none — in practice the roots of the repositories this turn changed. `git config`
+// merges global and repo-local settings, so reading it from a subdirectory of a repo
+// already sees that repo's config and these add nothing; what they cover is the turn
+// whose cwd is a folder HOLDING repositories rather than being one, where a per-repo
+// identity is real and simply out of scope from the parent. Same asymmetry Repo already
+// corrects for via soleRepoOrigin.
+//
+// ⚠️ THE SOURCE IS NOT DECORATION: THE THREE OUTCOMES NEED DIFFERENT FIXES, and until
+// this existed all three were the same empty string. A configured identity is the one
+// we want; a SYNTHESIZED one means the machine has no git identity and the value is a
+// `user@host` string that looks like an address and is not; nothing at all means even
+// git declined to guess. Live on 2026-09-01 a seat ran 123 turns over two weeks with
+// no identity, and because "unconfigured" was indistinguishable from every other
+// blank, nothing anywhere said so — see the DevSource docs in plugin/wire.
+//
+// ⚠️ AND `git config --get` IS NOT THE ONLY WAY TO ASK. It reads CONFIG and reports
+// nothing when the keys are unset, whereas `git var GIT_AUTHOR_IDENT` asks git to
+// RESOLVE an identity, which falls back to the OS passwd entry's name plus
+// user@hostname. On the affected machine the second answered where the first did not,
+// so an identity was available all along and we asked the one way that returns "".
+func DeveloperFrom(cwd string, alsoTry ...string) (string, string) {
+	if id := configuredDeveloper(cwd); id != "" {
+		return id, wire.DevSourceConfig
+	}
+	for _, dir := range alsoTry {
+		if dir == "" || sameDir(dir, cwd) {
+			continue
+		}
+		if id := configuredDeveloper(dir); id != "" {
+			return id, wire.DevSourceRepo
+		}
+	}
+	// git's own resolution, LAST: a real configured identity anywhere in the turn beats
+	// a value assembled from a hostname, so this may only answer once nothing else has.
+	if id := authorIdent(cwd); id != "" {
+		return id, wire.DevSourceIdent
+	}
+	return "", wire.DevSourceNone
+}
+
+// configuredDeveloper reads user.name / user.email, falling back to whichever is set.
+func configuredDeveloper(cwd string) string {
 	name := gitConfig(cwd, "user.name")
 	email := gitConfig(cwd, "user.email")
 	switch {
@@ -1022,6 +1074,39 @@ func Developer(cwd string) string {
 	default:
 		return ""
 	}
+}
+
+// authorIdent asks git to resolve an author identity and returns just the "Name <email>"
+// half, or "" when git cannot determine one.
+//
+// The output is `Name <email> <unix-seconds> <tz>`, so the trailing timestamp MUST be cut
+// — shipping it would put a different `developer` string on every single turn, which is
+// one row per turn on the leaderboard. And git prints "Author identity unknown" rather
+// than an ident when it has nothing, so the result is parsed rather than trusted: an
+// address is required, and the '@' test is what tells a real parse from that message.
+func authorIdent(cwd string) string {
+	out, err := git(cwd, "var", "GIT_AUTHOR_IDENT")
+	if err != nil {
+		return ""
+	}
+	return parseAuthorIdent(out)
+}
+
+// parseAuthorIdent cuts `Name <email> 1788266145 +0200` down to `Name <email>`, or
+// returns "" for anything that is not an ident. Pure, so the parse is testable without
+// depending on what identity the machine running the tests happens to have.
+func parseAuthorIdent(out string) string {
+	s := strings.TrimSpace(out)
+	end := strings.LastIndex(s, ">")
+	if end < 0 {
+		return "" // "Author identity unknown", or anything else git chose to say
+	}
+	s = strings.TrimSpace(s[:end+1])
+	start := strings.LastIndex(s, "<")
+	if start < 0 || !strings.Contains(s[start:], "@") {
+		return ""
+	}
+	return s
 }
 
 // gitConfig reads a single git config value, "" on any error.

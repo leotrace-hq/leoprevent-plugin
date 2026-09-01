@@ -82,6 +82,10 @@ func (d Local) Review(_ string, changes []transcript.Change, _ wire.TurnMeta) (e
 
 // ShipOutcome is a no-op for the local tier: the server never saw the code (only
 // rule IDs), so there is no /outcome to report to. Satisfies engine.Reviewer.
+// ShipReasons is a no-op for the local tier, for ShipOutcome's reason: the server saw no
+// code and holds no outcome to label.
+func (d Local) ShipReasons(_ outcome.Pending, _, _ string, _ wire.TurnMeta) error { return nil }
+
 func (d Local) ShipOutcome(_ outcome.Pending, _ []transcript.Change, _ string, _ wire.TurnMeta) ([]wire.Finding, []wire.Finding, error) {
 	return nil, nil, nil
 }
@@ -310,15 +314,19 @@ func (h Cloud) ShipOutcome(p outcome.Pending, after []transcript.Change, agentRe
 	// out of it to avoid a duplicate would make that record less faithful.
 	assumptions, reported := review.ParseAssumptions(agentResponse)
 	resp, err := h.client.Outcome(wire.OutcomeRequest{
-		ReviewID:            p.ReviewID,
-		Repo:                p.Repo,
-		Developer:           p.Developer,
-		Agent:               meta.Agent,
-		AgentModel:          agentModel,
-		Before:              p.Before,
-		After:               afterFiles,
-		Findings:            p.Findings,
-		AgentResponse:       agentResponse,
+		ReviewID:      p.ReviewID,
+		Repo:          p.Repo,
+		Developer:     p.Developer,
+		Agent:         meta.Agent,
+		AgentModel:    agentModel,
+		Before:        p.Before,
+		After:         afterFiles,
+		Findings:      p.Findings,
+		AgentResponse: agentResponse,
+		// The turn's own instruction, so the server's reason classifier can tell a
+		// deliberate test of LeoPrevent from ordinary work — see wire.OutcomeRequest.Prompt.
+		// Already sent on /review this same turn, so no new egress.
+		Prompt:              meta.Prompt,
 		Assumptions:         assumptions,
 		AssumptionsReported: reported,
 		// FULL-TURN agent token usage + wall-clock (final-Stop capture, spans the re-wake).
@@ -376,6 +384,41 @@ func (h Cloud) ShipResolution(p outcome.Pending, after []transcript.Change, meta
 	stillOpen = append(stillOpen, resp.IntroducedStillFiring...)
 	stillOpen = append(stillOpen, resp.PreexistingStillFiring...)
 	return stillOpen, nil
+}
+
+// ShipReasons POSTs a REASONS-ONLY resolution: the carried findings plus this turn's own
+// words, so the server can record why they are still open without re-judging anything.
+//
+// ⚠️ THE TURN THAT DECIDES IS RARELY THE TURN THAT BLOCKED. /outcome fires at the second
+// Stop of the blocked turn, so its reply predates the developer answering — the ticket is
+// usually created on the NEXT turn, which changes no flagged file and so never triggers an
+// ordinary resolution. Without this the commonest shape of "ticketed" was invisible.
+//
+// Deliberately carries NO after-files and no token/duration meta: nothing is re-judged, and
+// this turn's own cost is already recorded by its /review or /telemetry.
+func (h Cloud) ShipReasons(p outcome.Pending, prompt, reply string, meta wire.TurnMeta) error {
+	agentModel := meta.AgentModel
+	if agentModel == "" {
+		agentModel = p.AgentModel
+	}
+	_, err := h.client.Outcome(wire.OutcomeRequest{
+		ReviewID:      p.ReviewID, // the ORIGIN review whose findings are still open
+		Resolution:    true,
+		ReasonsOnly:   true,
+		Repo:          p.Repo,
+		Developer:     p.Developer,
+		Agent:         meta.Agent,
+		AgentModel:    agentModel,
+		Findings:      p.Findings,
+		Prompt:        prompt,
+		AgentResponse: reply,
+	})
+	// An unscored ACK is the EXPECTED answer here — nothing was judged, by design — so it is
+	// not an error worth reporting to a caller that changes no state either way.
+	if errors.Is(err, outcome.ErrUnscored) {
+		return nil
+	}
+	return err
 }
 
 // ShipTelemetry reports a NO-REVIEW turn's metadata to /telemetry so per-prompt
