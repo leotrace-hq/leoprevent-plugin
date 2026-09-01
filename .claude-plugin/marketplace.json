@@ -1,18 +1,32 @@
 {
   "name": "leotrace-dev",
   "owner": {
-    "name": "LeoTrace"
+    "name": "LeoTrace",
+    "url": "https://leotrace.io"
   },
   "description": "LeoTrace security plugins for coding agents.",
   "plugins": [
     {
       "name": "leoprevent-dev",
+      "displayName": "LeoPrevent (dev)",
       "source": "./.agents/plugins/leoprevent",
       "description": "Makes Claude Code generate more secure code. A Stop hook re-wakes the agent to review and fix its own changes against LeoTrace's security rules before the developer sees \"done\". [dev channel]",
-      "version": "0.2.24-dev.dc523f3",
+      "version": "0.2.24-dev.88defa0",
       "author": {
-        "name": "LeoTrace"
-      }
+        "name": "LeoTrace",
+        "url": "https://leotrace.io"
+      },
+      "category": "security",
+      "keywords": [
+        "security",
+        "secure-coding",
+        "code-review",
+        "vulnerabilities",
+        "hooks"
+      ],
+      "homepage": "https://leotrace.io",
+      "repository": "https://github.com/leotrace-hq/leoprevent-plugin",
+      "license": "Apache-2.0"
     }
   ]
 }
