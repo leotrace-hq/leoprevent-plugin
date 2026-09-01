@@ -117,14 +117,31 @@ install ever fails: the failure gets snapshotted too, so it won't clear itself o
 ## Codex
 
 Install:
-```
+```bash
 codex plugin marketplace add leotrace-hq/leoprevent-plugin
+codex plugin add leoprevent@leotrace
 ```
-Then enable **leoprevent** in the `/plugins` browser.
+
+Open a new Codex session after installing, then verify the active installation:
+
+```bash
+codex plugin list --marketplace leotrace
+```
+
+It should show `leoprevent@leotrace` as installed and enabled.
 
 Set your license key (once). See [Set your license key](#set-your-license-key) below.
 
-To update: `codex plugin marketplace upgrade`.
+To update:
+
+```bash
+codex plugin marketplace upgrade leotrace
+codex plugin add leoprevent@leotrace
+```
+
+The first command refreshes the marketplace snapshot; it does not replace the installed plugin by
+itself. The second command installs the latest version from that snapshot. Open a new Codex session
+afterward so its hooks load the updated version. Your license key survives the update.
 
 ## GitHub Copilot (VS Code)
 
