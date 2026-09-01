@@ -389,6 +389,40 @@ type OutcomeRequest struct {
 	// agent PUSHES BACK, this is the false-positive tuning signal ("this URL is a
 	// hardcoded constant…"). A body.
 	AgentResponse string `json:"agent_response,omitempty"`
+	// Prompt is the developer's own instruction for this turn — the same string /review
+	// already sent as TurnMeta.Prompt, repeated here so the /outcome reason classifier can
+	// read it (LEO-138).
+	//
+	// ⚠️ NO NEW EGRESS CATEGORY, AND WORTH BEING PRECISE ABOUT WHY. An /outcome only ever
+	// follows a BLOCK, so /review has already sent this exact string this turn; this is the
+	// same data on a second endpoint, not a new disclosure. It is NOT persisted again either:
+	// the server reads it and drops it, because the review event already holds it and a
+	// second copy would duplicate a body for nothing.
+	//
+	// ⚠️ IT IS WHAT MAKES `testing_leoprevent` WORK. Measured on the live LeoTrace account,
+	// two thirds of the triggered reviews under one seat are LeoPrevent's own smoke tests —
+	// and their agent REPLIES read like ordinary work ("Hook returned: …"), because the
+	// unsafe code was authored on an earlier turn. The developer's instruction is the thing
+	// that says plainly what the turn was for ("/unsafe", "test if it gets picked up").
+	//
+	// Empty on an older client, which simply leaves the classifier reading the reply alone —
+	// exactly its behaviour before this field existed.
+	Prompt string `json:"prompt,omitempty"`
+	// ReasonsOnly asks the server to CLASSIFY the carried findings' reasons and re-judge
+	// NOTHING. Set only on a Resolution call made because this turn's words suggest a
+	// follow-up was arranged (a ticket raised), not because any flagged file changed.
+	//
+	// ⚠️ IT EXISTS BECAUSE THE DECISION USUALLY LANDS ON A LATER TURN THAN THE BLOCK.
+	// `/outcome` fires at the SECOND Stop of the turn that blocked, so the reply it carries
+	// predates the developer answering: "generate some code" blocks, the agent explains,
+	// and the ticket is created on the NEXT turn in response to "create an issue". That
+	// later turn changes no flagged file, so the ordinary resolution trigger never fires and
+	// the ticket was invisible — on the very shape LEO-138 is named after.
+	//
+	// Re-judging would be wrong here as well as wasteful: no flagged file changed, so an
+	// Opus pass could only repeat what the ledger already says. The server therefore records
+	// reasons alone and reports scored=false, which is what keeps the client's ledger intact.
+	ReasonsOnly bool `json:"reasons_only,omitempty"`
 
 	// Assumptions are the things the agent says it treated as true WITHOUT verifying
 	// this turn ("the caller is already authenticated", "this input is validated

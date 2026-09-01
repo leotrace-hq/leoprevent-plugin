@@ -76,6 +76,12 @@ type Reviewer interface {
 	// an unscored response is an error (outcome.ErrUnscored), so an empty stillFiring
 	// with a nil error genuinely means everything resolved.
 	ShipResolution(p outcome.Pending, after []transcript.Change, meta wire.TurnMeta) (stillFiring []wire.Finding, err error)
+	// ShipReasons asks the server to record WHY the carried findings are still open, from
+	// this turn's own words, re-judging nothing. It exists because the developer's decision
+	// usually lands on a LATER turn than the block — see wire.OutcomeRequest.ReasonsOnly.
+	// Cloud POSTs /outcome with Resolution+ReasonsOnly; local is a no-op. Best-effort: the
+	// ledger is never changed by it, so a failure costs a label and nothing else.
+	ShipReasons(p outcome.Pending, prompt, reply string, meta wire.TurnMeta) error
 	// ShipTelemetry reports the coding agent's turn metadata for a turn that did NOT
 	// trigger a review (no changed files, or every change inert), so per-prompt
 	// cost/latency analytics covers EVERY turn — not only reviewed ones. Cloud POSTs
@@ -516,6 +522,28 @@ func resolveLedger(r Reviewer, sessionID string, changes []transcript.Change, me
 	}
 	if err := outcome.SaveLedger(sessionID, kept); err != nil {
 		log.Debug("update cross-turn ledger failed (continuing)", "err", err.Error())
+	}
+
+	// ⚠️ THE DECISION USUALLY LANDS ON A TURN THAT CHANGED NO FLAGGED FILE, so everything
+	// above misses it. `/outcome` fires at the SECOND Stop of the turn that blocked, which
+	// means its reply predates the developer answering: "generate some code" blocks, the
+	// agent explains, and the ticket is raised on the NEXT turn in response to "create an
+	// issue". That turn edits nothing the ledger names, so the loop above carries every
+	// entry untouched and the ticket is never recorded — on the exact shape LEO-138 exists
+	// for.
+	//
+	// So when this turn's own words suggest a follow-up was arranged, ask the server to
+	// CLASSIFY the still-open findings and re-judge nothing. Gated because this runs on
+	// every ordinary turn while the ledger holds anything; best-effort because it changes
+	// no state — a failure costs a label and the entry stays exactly as it is.
+	if len(kept) > 0 && review.MentionsFollowUp(meta.Prompt, meta.AgentNote) {
+		for _, e := range kept {
+			if err := r.ShipReasons(e, meta.Prompt, meta.AgentNote, meta); err != nil {
+				log.Debug("reasons-only resolution failed (best-effort, ignoring)", "review_id", e.ReviewID, "err", err.Error())
+				continue
+			}
+			log.Info("classified why carried findings are still open", "review_id", e.ReviewID, "open", len(e.Findings))
+		}
 	}
 	return resolvedIDs
 }
