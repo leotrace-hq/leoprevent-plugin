@@ -186,7 +186,7 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 	}
 	if len(changes) == 0 {
 		log.Debug("no file edits this turn, allowing stop")
-		shipTelemetry(a, r, ev, wire.TelemetryNoChange, 0, usedGit, baselineSkip, log, now)
+		shipTelemetry(a, r, ev, wire.TelemetryNoChange, changes, usedGit, baselineSkip, log, now)
 		// A turn with no changes is normally just a question, and stays silent. But when
 		// the git path was SKIPPED, "no changes" may instead mean we could not SEE them:
 		// on an adapter with no transcript fallback (copilot) an empty change set is
@@ -236,7 +236,7 @@ func Run(a agent.Agent, r Reviewer, ev agent.Event, stdout, stderr io.Writer) in
 	log.Info("changed files", "changed", len(changes), "reviewable", len(reviewable))
 	if len(reviewable) == 0 {
 		log.Debug("all changes inert, allowing stop")
-		shipTelemetry(a, r, ev, wire.TelemetryInert, len(changes), usedGit, baselineSkip, log, now)
+		shipTelemetry(a, r, ev, wire.TelemetryInert, changes, usedGit, baselineSkip, log, now)
 		return 0
 	}
 
@@ -588,11 +588,28 @@ func fileFromLocation(loc string) string {
 // these are the NO-REVIEW turns, i.e. exactly the ones where "why was there nothing to
 // review" is the whole question, and the field that answers it was blank on every one
 // of them. A pilot ran a weekend of unreviewed turns whose events could not say why.
-func shipTelemetry(a agent.Agent, r Reviewer, ev agent.Event, reason string, changedFiles int,
-	usedGit bool, baselineSkip vcs.SkipReason, log *slog.Logger, now time.Time) {
+// shipTelemetry reports a turn that ran no review — no change, or every change inert — so the
+// per-prompt analytics stay complete. Cloud only, fail-open, metadata with no prompt or code.
+//
+// ⚠️ IT TAKES THE CHANGES, AND IT APPLIES THE SAME `soleRepoOrigin` CORRECTION THE REVIEW PATH
+// DOES (LEO-194). `turnMeta` resolves `Repo` from cwd, which names nothing when cwd is a folder
+// HOLDING repositories rather than being one, and this path had no correction at all — so a
+// workspace turn whose only edits were comments lost its repository while the identical turn
+// with reviewable code kept it. That is not a cosmetic gap: `Repo` is the dimension the
+// Repositories tab counts turns by, so the same account's turn count and review count came off
+// different populations, and a repo whose recent work was all inert simply looked idle.
+//
+// The no-change caller passes an empty slice, where the correction is a no-op by construction:
+// nothing changed, so there is no repository to name and the field stays honestly blank.
+func shipTelemetry(a agent.Agent, r Reviewer, ev agent.Event, reason string,
+	changes []transcript.Change, usedGit bool, baselineSkip vcs.SkipReason,
+	log *slog.Logger, now time.Time) {
 	meta := turnMeta(a, ev, log, now)
 	meta.GitBaseline, meta.BaselineSkip = usedGit, string(baselineSkip)
-	if err := r.ShipTelemetry(meta, reason, changedFiles); err != nil {
+	if meta.Repo == "" {
+		meta.Repo = soleRepoOrigin(ev.Cwd, changes)
+	}
+	if err := r.ShipTelemetry(meta, reason, len(changes)); err != nil {
 		log.Debug("ship telemetry failed (best-effort, ignoring)", "reason", reason, "err", err.Error())
 	}
 }

@@ -377,3 +377,76 @@ func touch(t *testing.T, path, extra string) {
 		t.Fatal(err)
 	}
 }
+
+// ...and a turn whose only changes were INERT names it too (LEO-194).
+//
+// `shipTelemetry` built its meta from `turnMeta` alone and applied none of the workspace
+// correction the review path applies, so a workspace turn that edited nothing but comments
+// reported no repository while the identical turn with reviewable code reported one. `Repo`
+// is the dimension the Repositories tab counts TURNS by, so the same account's turn count
+// and review count came off different populations — and a repository whose recent work was
+// all comments simply looked idle.
+//
+// Fails against the pre-fix `shipTelemetry`, which took a count rather than the changes and
+// so had nothing to resolve the repository from.
+func TestInertTelemetryNamesTheRepositoryThatChanged(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ws := t.TempDir()
+	session := uniqueSession(t, "engine-workspace-inert-repo")
+	seedRepo(t, filepath.Join(ws, "project-a"))
+	seedRepo(t, filepath.Join(ws, "project-b"))
+	addOrigin(t, filepath.Join(ws, "project-a"), "git@github.com:acme/project-a.git")
+	addOrigin(t, filepath.Join(ws, "project-b"), "git@github.com:acme/project-b.git")
+	if err := vcs.CaptureBaseline(ws, session); err != nil {
+		t.Fatal(err)
+	}
+	preTool(t, ws, filepath.Join(ws, "project-b", "app.py"), session)
+	touch(t, filepath.Join(ws, "project-b", "app.py"), "# just a note, nothing to review\n")
+
+	r := &fakeReviewer{}
+	runWith(copilot.New(), r, copilotStop(ws, session))
+	if r.called {
+		t.Fatal("a comment-only change must not be reviewed")
+	}
+	if r.telemetryReason != wire.TelemetryInert {
+		t.Fatalf("expected an inert telemetry call, got %q", r.telemetryReason)
+	}
+	if got, want := r.telemetryMeta.Repo, "github.com/acme/project-b"; got != want {
+		t.Errorf("inert telemetry must name the repo that changed, got %q want %q", got, want)
+	}
+	if r.telemetryChanged != 1 {
+		t.Errorf("the inert change should still be counted, got %d", r.telemetryChanged)
+	}
+}
+
+// But an inert turn spanning TWO repositories still names neither — the correction is
+// `soleRepoOrigin`, so the review path's refusal to guess reaches this path unchanged.
+func TestInertTelemetrySpanningTwoReposNamesNeither(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	ws := t.TempDir()
+	session := uniqueSession(t, "engine-workspace-inert-tworepos")
+	seedRepo(t, filepath.Join(ws, "project-a"))
+	seedRepo(t, filepath.Join(ws, "project-b"))
+	addOrigin(t, filepath.Join(ws, "project-a"), "git@github.com:acme/project-a.git")
+	addOrigin(t, filepath.Join(ws, "project-b"), "git@github.com:acme/project-b.git")
+	if err := vcs.CaptureBaseline(ws, session); err != nil {
+		t.Fatal(err)
+	}
+	preTool(t, ws, filepath.Join(ws, "project-a", "app.py"), session)
+	preTool(t, ws, filepath.Join(ws, "project-b", "app.py"), session)
+	touch(t, filepath.Join(ws, "project-a", "app.py"), "# a note\n")
+	touch(t, filepath.Join(ws, "project-b", "app.py"), "# b note\n")
+
+	r := &fakeReviewer{}
+	runWith(copilot.New(), r, copilotStop(ws, session))
+	if r.telemetryReason != wire.TelemetryInert {
+		t.Fatalf("expected an inert telemetry call, got %q", r.telemetryReason)
+	}
+	if r.telemetryMeta.Repo != "" {
+		t.Errorf("a cross-repo inert turn must name no single app, got %q", r.telemetryMeta.Repo)
+	}
+}
