@@ -47,6 +47,7 @@ echo "==> cross-compiling client"
 GOOS=darwin  GOARCH=arm64 go build $BUILDFLAGS -ldflags="$LDFLAGS" -o bin/leoprevent-plugin-darwin-arm64 "$PKG"
 GOOS=darwin  GOARCH=amd64 go build $BUILDFLAGS -ldflags="$LDFLAGS" -o bin/leoprevent-plugin-darwin-amd64 "$PKG"
 GOOS=linux   GOARCH=amd64 go build $BUILDFLAGS -ldflags="$LDFLAGS" -o bin/leoprevent-plugin-linux-amd64  "$PKG"
+GOOS=linux   GOARCH=arm64 go build $BUILDFLAGS -ldflags="$LDFLAGS" -o bin/leoprevent-plugin-linux-arm64  "$PKG"
 # Windows: static .exe (cross-compiled on macOS/Linux; never built on Windows).
 # CGO is off by default when cross-compiling, so these are self-contained.
 GOOS=windows GOARCH=amd64 go build $BUILDFLAGS -ldflags="$LDFLAGS" -o bin/leoprevent-plugin-windows-amd64.exe "$PKG"
