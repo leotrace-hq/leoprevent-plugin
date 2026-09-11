@@ -1,0 +1,4 @@
+# Build output of ./build.sh (the compiled client binaries).
+# Anchored with a leading slash so it matches ONLY this module's own bin/ — an
+# unanchored "bin/" would silently ignore any future nested bin/ directory too.
+/bin/
