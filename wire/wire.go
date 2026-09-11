@@ -1,0 +1,695 @@
+// Package wire is the shared HTTP request/response contract for the leoprevent
+// API, used by both the client (apiclient) and the server (api). It lives once
+// so the two sides cannot drift.
+//
+//   - /review  (cloud tier):   code in → findings out. Rules never leave the server.
+//   - /rules   (local tier):  rule IDs in → rule content out. No code ever in.
+package wire
+
+import "github.com/leotrace-hq/leoprevent-plugin/rulespec"
+
+// ChangedFile is one file changed this turn.
+//
+//   - AddedText is the code the agent added this turn — what the server selects
+//     on (scoped to what changed).
+//   - FullContent is OPTIONAL whole-file context (capped) the cloud client sends
+//     when it captured changes via the git baseline; the server's judge reasons
+//     over it so off-screen guards/sinks are visible. Empty → judge falls back
+//     to AddedText (legacy snippet-only behaviour).
+type ChangedFile struct {
+	Path        string `json:"path"`
+	AddedText   string `json:"added_text"`
+	FullContent string `json:"full_content,omitempty"`
+	// AddedLines are the 1-based line numbers (in FullContent's numbering) the agent
+	// ADDED this turn, taken from the git diff hunk headers — POSITIONAL, not content.
+	// This is the authority for introduced-vs-pre-existing: it distinguishes two
+	// identical lines (a pre-existing line and an added copy of it), which a content
+	// match cannot — the copy-paste case where an agent mirrors an existing handler.
+	// Absent (nil) when there's no git diff (the transcript fallback) or from an older
+	// client → the server then can't positionally anchor and defaults to pre-existing.
+	AddedLines []int `json:"added_lines,omitempty"`
+}
+
+// ContextFile is an UNCHANGED in-repo file pulled in for cross-file context — a
+// local helper the changed code imports and calls, whose body holds the actual
+// sink (the indirect-sink blind spot: a reviewer seeing only the changed file
+// can't judge a guard/sink that lives one import away). The cloud client resolves
+// these on-device (one hop, local symbols only — never stdlib/third-party) and
+// sends them alongside Changes. The server shows them to BOTH the selector (so a
+// non-telegraphing sink like os.system still shortlists its rule) and the judge,
+// LABELED as imported context — so any finding landing here is marked preexisting
+// (surfaced to the dev, never force-fixed: the dev didn't change this file).
+type ContextFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	// Lines are the 1-based real file line numbers of Content's lines, present when
+	// Content is a SLICE of the file rather than the whole of it — the client sends
+	// only the spans the changed code can reach (selective function pulling), which
+	// is most of the imported-context payload saved. Same shape and contract as
+	// ChangedFile.AddedLines: index-aligned with Content's lines, so the server
+	// numbers the excerpt truthfully and the gaps between numbers read as elided
+	// code. Absent (nil) means Content IS the whole file from line 1 — the case for
+	// an older client and for any file the slicer could not safely reduce.
+	Lines []int `json:"lines,omitempty"`
+}
+
+// ReviewRequest is the POST /review body (cloud tier). It carries only the
+// turn-scoped changed code (git diff vs the turn-start baseline; transcript-scoped
+// only in the non-git fallback) — never the whole repo — plus optional Context
+// (imported local files the change calls into; see ContextFile) and optional
+// TurnMeta describing the CODING AGENT's own turn (model, repo, developer, prompt,
+// token usage, wall-clock), for the server's analytics. Meta is best-effort: a
+// client that can't compute it sends the zero value and review proceeds unchanged.
+type ReviewRequest struct {
+	Changes []ChangedFile `json:"changes"`
+	Context []ContextFile `json:"context,omitempty"`
+	Meta    TurnMeta      `json:"meta,omitempty"`
+}
+
+// TurnMeta is the coding agent's OWN activity for the turn under review — NOT
+// leoprevent's. On `/review` it is captured at the first Stop (pre-re-wake); the
+// SAME struct is re-captured at the FINAL Stop and shipped on the OutcomeRequest
+// (full-turn token + duration fields) so a blocked turn's cost spans the re-wake.
+// The server stamps these onto the audit event so reviews can be sliced
+// by developer / repo / agent model — e.g. "which engineer trips the most rules,
+// in which app." Prompt is the only BODY field (the developer's text); the server
+// drops it (and the diff) on a CLEAN verdict and whenever body logging is off. All
+// other fields are metadata, always retained.
+type TurnMeta struct {
+	Agent      string `json:"agent,omitempty"`       // the coding agent itself: "claude" | "codex" | "copilot" (from --agent; always known)
+	AgentModel string `json:"agent_model,omitempty"` // the model, e.g. "claude-opus-4-8" (from the transcript; blank for Copilot — no transcript model)
+	Repo       string `json:"repo,omitempty"`        // normalized git origin "host/org/repo" (the "app")
+	Developer  string `json:"developer,omitempty"`   // git user "Name <email>" (PII; attribution)
+	// DeveloperSource says WHERE Developer came from — one of the DevSource* values
+	// below. Metadata, always retained, same character as OS/Arch/ClientVersion.
+	//
+	// ⚠️ IT EXISTS BECAUSE AN ABSENT IDENTITY USED TO BE INDISTINGUISHABLE FROM EVERY
+	// OTHER BLANK, and that hid a live fault for a fortnight. A machine with no git
+	// `user.name` / `user.email` sent `developer: ""`, exactly like an older client, a
+	// git error or a non-repo directory; the turns were then dropped from the
+	// leaderboard as unattributable and the developer's own row read as somebody who
+	// had never installed the plugin (fixed at read time in packages/metrics, which is
+	// what makes THAT retroactive — this field is forward-only and answers the
+	// different question of how often it happens and to whom).
+	//
+	// ⚠️ AND A SYNTHESIZED IDENTITY MUST BE MARKED AS ONE. DevSourceIdent means git
+	// assembled `Name <user@hostname>` from the OS passwd entry: useful, and NOT a real
+	// address, though it is shaped exactly like one. Any surface that treats
+	// `developer` as somebody's contact address, or joins it to a roster, has to be
+	// able to tell the two apart — which is only possible if the fact travels.
+	DeveloperSource string `json:"developer_source,omitempty"`
+	Prompt          string `json:"prompt,omitempty"` // BODY: the dev's turn-start prompt; dropped on clean / bodies-off
+	// OS/Arch are the DEVELOPER MACHINE's platform, from the client binary's own
+	// runtime.GOOS/GOARCH — so they are always known and never parsed (unlike
+	// AgentModel, which depends on a transcript). Metadata, not PII: the answer to
+	// "which platforms is the plugin actually running on" (and, since we ship ONE
+	// windows/amd64 exe that also runs emulated on ARM, "amd64 on ARM Windows" is a
+	// real combination worth seeing). They ride /review AND /telemetry, so the
+	// platform mix is complete per-turn; deliberately NOT on OutcomeRequest — an
+	// outcome is the same machine as its review, so it would add egress and no
+	// information.
+	OS   string `json:"os,omitempty"`   // "darwin" | "windows" | "linux" (runtime.GOOS)
+	Arch string `json:"arch,omitempty"` // "arm64" | "amd64" (runtime.GOARCH)
+	// ClientVersion is the plugin build the turn ran on (buildinfo.Version, stamped
+	// from plugin/VERSION; "dev" for an unstamped local build). Same character as
+	// OS/Arch — compiled in, always known, no transcript needed — and it rides the
+	// same routes (/review AND /telemetry, not /outcome: same machine as its review).
+	// Without it a support question as basic as "which version was this dev on?" is
+	// unanswerable from the event log, which is exactly how a client-side regression
+	// stays invisible: every turn looks the same server-side no matter what shipped.
+	ClientVersion string `json:"client_version,omitempty"`
+	// Environment is the PRODUCT SURFACE this turn ran in — the terminal, the desktop
+	// app, a web session — normalized to the closed Env* vocabulary below. Agent alone
+	// stops at the VENDOR ("claude"), which cannot answer "did this turn come from the
+	// terminal or from claude.ai", so the two are separate dimensions and must stay
+	// separable in analysis: Agent x Environment x AgentModel, never one fused string.
+	//
+	// Same character as OS/Arch/ClientVersion — resolved from the client's own process
+	// environment or its hook dialect, never from a transcript, so it needs no parse to
+	// succeed — and it rides the same routes (/review AND /telemetry, not /outcome:
+	// same machine as its review, so it would be egress with no information).
+	//
+	// EMPTY means the client is too old to send one. EnvUnknown means a current client
+	// looked and could not classify what it found. Those are different facts and the
+	// dashboards must not merge them: the first is a rollout gap that fixes itself as
+	// clients update, the second is a surface we have not taught the client about.
+	Environment string `json:"environment,omitempty"`
+	// EnvironmentRaw is the underlying signal VERBATIM and unmapped (for Claude Code,
+	// $CLAUDE_CODE_ENTRYPOINT). It exists because the normalized vocabulary is compiled
+	// into the client, and the client is the slowest thing in the system to update: when
+	// a new surface appears, Environment buckets it as EnvUnknown until a release ships,
+	// while this field shows what it actually was from the very first turn. It also makes
+	// a misclassification diagnosable from the event log alone, with no repro.
+	//
+	// Metadata, not PII — a product-surface identifier from a fixed vendor vocabulary.
+	// Never a path, a hostname or anything user-authored; see the Env* mapping.
+	EnvironmentRaw string `json:"environment_raw,omitempty"`
+	// GitBaseline reports whether this turn's changed files came from the git-baseline
+	// diff (true) or the DEGRADED transcript fallback (false), and BaselineSkip says
+	// WHY when it didn't. The fallback loses full-file context, real line numbers and
+	// Bash-write detection, but is otherwise indistinguishable server-side — so a dev
+	// silently stuck on it looks identical to one who is fine. The reason matters
+	// because the causes have opposite fixes: no baseline recorded (the UserPromptSubmit
+	// hook never ran) vs a baseline that existed and git then lost (the dangling stash
+	// commit was garbage-collected).
+	GitBaseline bool `json:"git_baseline,omitempty"`
+	// BaselineHead is the commit HEAD pointed at when the turn STARTED, and
+	// ImportedDropped counts files excluded from review because their content was
+	// already published before it — brought into the tree by a mid-turn checkout,
+	// pull, merge or rebase rather than written by the agent (vcs.BaselineInfo).
+	//
+	// Metadata, and worth the two fields: that subtraction is the only step that
+	// REMOVES code from review, so an over-subtraction is silent by nature — the turn
+	// just looks quieter. The client log names the dropped paths on the developer's
+	// own machine; these make the same thing answerable fleet-wide.
+	BaselineHead    string `json:"baseline_head,omitempty"`
+	ImportedDropped int    `json:"imported_dropped,omitempty"`
+	BaselineSkip    string `json:"baseline_skip,omitempty"`
+
+	// HeadAnchoredRepos names repositories in this turn that had NO turn-start baseline
+	// and were reviewed against HEAD as a last resort (basenames; the absolute path is
+	// the developer's machine and never travels).
+	//
+	// ⚠️ IT MARKS A WEAKER REVIEW AND EVERY SURFACE THAT RENDERS ONE MUST SAY SO. A HEAD
+	// anchor cannot separate this turn's work from whatever was already uncommitted, so
+	// the diff is a superset of the turn and the findings are SURFACED for the developer
+	// to fix now or later rather than applied in-turn. A review carrying this is not
+	// comparable to a baselined one: its finding counts may include pre-existing work,
+	// so it must not be read as "the agent introduced these".
+	//
+	// Set by the client from vcs.BaselineInfo. Absent on every ordinary turn, which is
+	// why it is omitempty — the common case adds no bytes.
+	HeadAnchoredRepos []string `json:"head_anchored_repos,omitempty"`
+	// AgentNote is the coding agent's OWN end-of-turn message (last_assistant_message at
+	// the FIRST Stop, before any re-wake) — what the agent itself said about the code it
+	// wrote, including issues it flagged but chose not to fix. BODY (the agent's text).
+	// Used server-side to classify each finding as already-acknowledged by the agent
+	// (forcing-lift) vs missed (detection-lift) — the moving-baseline signal. Transient:
+	// used for classification, NOT persisted on the review event (only the per-finding
+	// bool is). Like Prompt it egresses only on a reviewed turn.
+	AgentNote string `json:"agent_note,omitempty"`
+
+	// Token usage summed over the agent's assistant messages this turn. Kept as the
+	// four raw counts (not a dollar figure) — pricing varies per model and over
+	// time, so cost is computed downstream from these + AgentModel.
+	InputTokens         int `json:"input_tokens,omitempty"`
+	CacheCreationTokens int `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadTokens     int `json:"cache_read_input_tokens,omitempty"`
+	OutputTokens        int `json:"output_tokens,omitempty"`
+
+	DurationMs int64  `json:"duration_ms,omitempty"` // agent wall-clock: Stop-hook end − prompt ts (the "crunched for X" interval)
+	Speed      string `json:"speed,omitempty"`       // "fast" when Claude Code Fast mode was on → Opus ~2× price tier
+
+	// ContinuesReviewID marks a CONTINUATION batch of a multi-request turn (a change
+	// set over the per-request budget spans several /review POSTs). Batches ≥2 carry
+	// only the identity dimensions (model/repo/developer) plus this pointer to the
+	// FIRST batch's review_id — the event that holds the turn's tokens, duration and
+	// prompt — so per-turn cost lands in the audit log exactly once, traceably.
+	ContinuesReviewID string `json:"continues_review_id,omitempty"`
+
+	// ResolvedReviewIDs are the origin review_ids whose surfaced pre-existing findings
+	// this SAME turn just resolved cross-turn (see OutcomeRequest.Resolution). Set when
+	// the dev fixes a previously-surfaced pre-existing vuln a later turn: that turn's
+	// /review records these so the (usually clean) review event is identifiable as a
+	// RE-REVIEW and linkable back to the triggered review that first flagged them.
+	ResolvedReviewIDs []string `json:"resolved_review_ids,omitempty"`
+}
+
+// Finding is one confirmed violation from the server's judge.
+type Finding struct {
+	Rule string `json:"rule"` // rule ID that fired
+	// SecretValues are the credential literals the judge observed in THIS finding, used
+	// server-side to keep them out of what the developer is shown (LEO-225).
+	//
+	// ⚠️ `json:"-"` IS THE ENTIRE POINT AND MUST NOT BE REMOVED. This struct is the
+	// response body: serialising this field would ship the customer's credential to the
+	// very client the redaction exists to protect, turning the control into the leak.
+	// It never crosses the wire in either direction, and TestFindingNeverSerialisesSecretValues
+	// pins that.
+	SecretValues []string `json:"-"`
+	Name         string   `json:"name,omitempty"` // human rule name (e.g. "Server-Side Request Forgery"); server-filled
+	Location     string   `json:"location"`       // file:line
+	// EndLine is the LAST line of the flagged construct, when the judge marked a span
+	// rather than a single line (LEO-37). Absent/0 means the finding is one line, which
+	// is every finding recorded before this field existed.
+	//
+	// ⚠️ IT IS DISPLAY ONLY, AND THAT IS THE WHOLE POINT OF IT BEING A SEPARATE FIELD.
+	// Location stays `file:line` and stays the finding's IDENTITY: the diff anchor that
+	// decides introduced-vs-pre-existing (api.classifyFindings), the (rule, location)
+	// pair behind preexisting_fixed_locs / introduced_resolved_locs, the dashboards'
+	// (repo, developer, rule, location, day) de-dup key, and the cross-turn ledger's
+	// match all read Location alone and must keep doing so. Folding a span into the
+	// identity would change what "the same finding" means across turns: a span that
+	// drifted by one line would become a different finding and every count would
+	// inflate. The server validates the span against the file it actually showed the
+	// judge and drops it when it cannot (api.clampFindingSpans), so a bad span costs a
+	// marker, never a misclassification.
+	EndLine int    `json:"end_line,omitempty"`
+	Issue   string `json:"issue"` // what's wrong
+	Fix     string `json:"fix"`   // the concrete fix to apply
+	// Preexisting is true when the judge determined the violation is in code that
+	// ALREADY existed (not in the lines added this turn). These are SURFACED to the
+	// developer to fix-or-not, never force-fixed in-turn. Absent/false ⇒ introduced
+	// this turn ⇒ force-fixed (the safe default if the judge omits it).
+	Preexisting bool `json:"preexisting,omitempty"`
+	// SuggestOnly is true when the finding's rule is marked `auto_fix: false` in the
+	// corpus. Like Preexisting, these are SURFACED to the developer to fix-or-not and
+	// never force-fixed in-turn — but for a different reason: the fix itself carries
+	// high regression risk (e.g. an nginx / reverse-proxy config rewrite that could
+	// break routing), so it is unsafe to auto-apply even for code introduced this
+	// turn. Server-filled from the rule's auto_fix flag (the server is the authority).
+	// Absent/false ⇒ auto-fix allowed.
+	SuggestOnly bool `json:"suggest_only,omitempty"`
+	// AgentAcknowledged is true when the coding agent's own end-of-turn message
+	// (TurnMeta.AgentNote) already called out THIS issue — server-classified after the
+	// judge. true ⇒ forcing-lift (the agent knew and shipped it anyway; leoprevent
+	// forced the fix); false ⇒ detection-lift (the agent missed it). Metadata.
+	AgentAcknowledged bool `json:"agent_acknowledged,omitempty"`
+	// NewlyReached is a BEST-EFFORT label on a PRE-EXISTING finding: the agent's code
+	// added this turn appears to newly route into this old sink (new call site → old
+	// vulnerable helper). It ONLY enriches the surfaced message ("your new code routes
+	// into this existing helper") so the agent can make its OWN new code safe — it
+	// NEVER changes Preexisting and NEVER causes a force-fix of the old line. Detection
+	// is heuristic (it can miss, and a miss is harmless: the finding still surfaces as a
+	// normal pre-existing item). Set only on pre-existing findings; absent otherwise.
+	NewlyReached bool `json:"newly_reached,omitempty"`
+	// TaintSource is WHERE the untrusted value this finding is about entered the process,
+	// from the closed Taint* vocabulary above — JUDGE-AUTHORED, because it is the only
+	// component that reads the code. It is an OBSERVATION and decides nothing on its own.
+	//
+	// The server validates it against the vocabulary and replaces an unrecognised value
+	// with TaintUnknown, so a hallucinated string can cost a grade adjustment but never
+	// enters the dimension the dashboards group on. Absent means a judge (or a stubbed
+	// model) that reported none, which is read exactly as TaintUnknown: no adjustment.
+	TaintSource string `json:"taint_source,omitempty"`
+	// Severity is the finding's EFFECTIVE severity — the rule's corpus `default_severity`
+	// adjusted for TaintSource by the server's policy table. SERVER-FILLED, never in the
+	// judge's schema, for the reason on TaintSource above.
+	//
+	// ⚠️ FORWARD-ONLY, AND THE READ SIDE MUST FALL BACK. Every finding recorded before
+	// LEO-175 carries none, and no backfill can invent one (the taint source was never
+	// observed), so a reader resolves `finding.severity ?? sevOf(rule)` — packages/metrics
+	// `severityOf` is the ONE implementation of that order. Two resolutions would let a
+	// badge and the donut beside it grade one finding differently.
+	//
+	// ⚠️ IT IS NOT PART OF THE FINDING'S IDENTITY, exactly as EndLine is not. Location
+	// alone still anchors the diff, the de-dup key and the cross-turn ledger. A severity
+	// is re-derived from a fresh model observation each turn, so folding it into identity
+	// would make the same flaw graded two ways into two findings and inflate every count.
+	Severity string `json:"severity,omitempty"`
+}
+
+// ClientVersionHeader carries the plugin build that made the request. It lives here,
+// in the shared wire package, because both sides now depend on the exact string: the
+// client stamps it on every POST, and the server reads it when the BODY could not be
+// decoded — the one case where meta.ClientVersion is unavailable and the version is
+// the first thing anyone debugging a rejected payload wants to know.
+const ClientVersionHeader = "X-LeoPrevent-Client-Version"
+
+// TurnMeta.Environment values — the CLOSED vocabulary the dashboards group on. It
+// lives here, in the shared wire package, for the same reason ClientVersionHeader
+// does: the client writes these strings and the server + both dashboards read them,
+// so a vendor-side spelling change must break the build in one place rather than
+// silently split one surface into two rows.
+//
+// Each value is one PRODUCT SURFACE, agent-prefixed so it reads correctly standing
+// alone in a table cell (Agent is a separate column, but a bare "vscode" would be
+// ambiguous between Claude Code and Copilot — both have one).
+//
+// DELIBERATELY SMALL. The mapping's inputs are much larger than this set (Claude
+// Code alone ships ~25 entrypoint values), and the temptation is to mint a constant
+// per input. Resist it: every value here becomes a row in someone's UI, and the
+// surfaces that cannot realistically run a Stop hook — an ephemeral GitHub Actions
+// or Slack sandbox, where nobody has installed the plugin — would be rows that are
+// always zero. A recognized-but-unmapped input lands on EnvUnknown with
+// TurnMeta.EnvironmentRaw carrying what it actually was, which is the honest record
+// and costs no UI. Add a constant when the log shows the raw value arriving, not in
+// anticipation of it.
+const (
+	EnvClaudeTerminal = "claude-code-terminal" // the CLI in a terminal
+	EnvClaudeDesktop  = "claude-code-desktop"  // the Claude desktop app
+	EnvClaudeWeb      = "claude-code-web"      // a remote session driven from claude.ai
+	EnvClaudeMobile   = "claude-code-mobile"   // a remote session driven from the mobile app
+	EnvClaudeVSCode   = "claude-code-vscode"   // the Claude Code VS Code extension
+	EnvClaudeCowork   = "claude-code-cowork"   // Cowork (local-agent / coworker sessions)
+	EnvClaudeSDK      = "claude-code-sdk"      // driven programmatically via the Agent SDK or MCP
+
+	EnvCodexCLI  = "codex-cli"  // the Codex CLI's own TUI, via its Stop hook
+	EnvCodexExec = "codex-exec" // headless, driven by our own `leoprevent exec` loop
+
+	EnvCopilotVSCode = "copilot-vscode" // GitHub Copilot agent mode inside VS Code
+	EnvCopilotCLI    = "copilot-cli"    // the GitHub Copilot CLI
+
+	// EnvUnknown is a CURRENT client that looked and could not classify what it found.
+	// It is NOT the same as an absent Environment (a client too old to send one) — see
+	// the field doc. Pair it with EnvironmentRaw to tell a brand-new vendor surface
+	// apart from no signal at all.
+	EnvUnknown = "unknown"
+)
+
+// DeveloperSource values for TurnMeta.DeveloperSource — a CLOSED vocabulary, like the
+// Env* set above, so the field stays groupable rather than becoming free text.
+//
+// EMPTY is a fourth state and is NOT DevSourceNone: it means a client too old to report
+// one, and it self-heals as installs update. DevSourceNone is a CURRENT client saying it
+// looked and there was nothing to find. Never merge the two in a query or a UI — that
+// conflation is the whole reason this field exists.
+const (
+	// DevSourceConfig — `user.name` / `user.email` as configured, from the directory the
+	// turn ran in. What we want, and what the great majority of turns carry.
+	DevSourceConfig = "git_config"
+	// DevSourceRepo — the same keys, but read from a CHANGED REPOSITORY's root because
+	// the turn's own directory had none. That happens when the agent is opened on a
+	// folder HOLDING repositories rather than on one (the workspace layout), where the
+	// per-repo config is real and simply out of scope from the parent.
+	DevSourceRepo = "repo_config"
+	// DevSourceIdent — git RESOLVED an identity where config had none, i.e.
+	// `Name <user@hostname>` assembled from the OS passwd entry.
+	//
+	// ⚠️ THE ADDRESS IN IT IS NOT REAL. It is shaped like one and belongs to no mailbox,
+	// so it must never be offered as a way to reach anybody, and a value carrying this
+	// source is the machine's guess at its own user rather than a stated identity.
+	DevSourceIdent = "git_ident"
+	// DevSourceNone — nothing was resolvable: not a git repo, a git error, or a machine
+	// with no identity and no passwd entry git would use. `developer` is then empty and
+	// the turn is attributed by its SEAT alone (see packages/metrics `engRowKey`).
+	DevSourceNone = "none"
+)
+
+// TaintSource values for Finding.TaintSource — WHERE the untrusted value a finding is
+// about entered the process. A CLOSED vocabulary, like the Env* and DevSource* sets
+// above, and for the same reason: it is a grouping dimension and a policy input, so free
+// text would give it a hundred spellings and make both impossible.
+//
+// ⚠️ IT IS THE *SOURCE*, NOT THE SINK, AND THAT ASYMMETRY IS WHY ONLY THIS HALF IS
+// SHARED. A source is a property of how data ENTERS the process and is therefore
+// CWE-independent — an environment variable is an environment variable whether it ends up
+// in a file path, an SQL query or an outbound URL. The SINK is already named by the rule
+// that fired (`path-traversal` means a filesystem path API; `sql-injection` means a
+// query), so a parallel sink vocabulary would be a second, weaker encoding of the rule id,
+// needing a mapping that could disagree with the rule that actually fired. There is a
+// second, harder difference: the source is a PER-FINDING fact only visible in the code, so
+// the judge is the only thing that can report it, while the sink is a PER-RULE fact known
+// when the rule was written. If a sink dimension is ever wanted, it belongs in the corpus
+// YAML beside `cwe`, never in a schema field asking the judge to guess what a human
+// already knew statically.
+//
+// ⚠️ THE JUDGE REPORTS THIS; IT NEVER REPORTS A SEVERITY. The value is an OBSERVATION,
+// and turning it into a grade is POLICY the server applies from a git-tracked table (see
+// server/internal/api/severity.go). Same discipline as Name and SuggestOnly: the server
+// is the sole writer of anything a dashboard grades on, so a prompt-injected or merely
+// confused judge cannot promote its own finding.
+//
+// DELIBERATELY SMALL, exactly like the Env* set. The temptation is one value per input
+// kind — a header, a cookie, a path segment and a form field are four ways of saying "the
+// HTTP request" — and every extra value is a row in a UI and a cell in a policy table
+// nobody has a reason for. Split one only when the log shows the distinction mattering,
+// never in anticipation of it.
+const (
+	// TaintRequest — data from an inbound request to this process: an HTTP body, query
+	// parameter, path segment, header, cookie, or uploaded file. The anonymous-attacker
+	// case, and the reason most rules carry the severity the corpus gives them.
+	TaintRequest = "request"
+	// TaintService — a response from something else we called: another service's RPC or
+	// HTTP reply, a third-party API, a message off a queue. Untrusted in the same way a
+	// request is, one hop further out.
+	TaintService = "service"
+	// TaintDatastore — a value read back from a database, cache or object store. Second
+	// -order taint (the stored-XSS shape): it is only as trustworthy as whatever wrote it,
+	// so it is NOT downgraded.
+	TaintDatastore = "datastore"
+	// TaintModel — output from an LLM or agent, including tool results routed through one.
+	// Attacker-influenced whenever anything upstream of the model is.
+	TaintModel = "model"
+	// TaintEnv — an environment variable.
+	TaintEnv = "env"
+	// TaintConfig — a configuration or data file read from the local filesystem, including
+	// one whose PATH came from an environment variable or a CLI argument.
+	TaintConfig = "config"
+	// TaintCLI — a command-line argument or an interactive prompt to this process.
+	TaintCLI = "cli"
+	// TaintLiteral — a constant written in the source. Most rules exclude this outright in
+	// does_not_apply_when; where one still fires, there is no attacker-controlled input at
+	// all and the grade should say so.
+	TaintLiteral = "literal"
+	// TaintUnknown — the judge looked and could not trace where the value came from.
+	//
+	// ⚠️ IT MUST NEVER BE TREATED AS "harmless". The policy applies NO adjustment to it, so
+	// the finding keeps the corpus severity — the same fail-toward-cautious posture as
+	// unsureIsPreexisting. A source we could not establish is not evidence of a safe one.
+	TaintUnknown = "unknown"
+)
+
+// TaintSources is the closed vocabulary as a slice, in the order the judge is shown it.
+// It exists so the schema enum, the policy table's exhaustiveness test and any UI
+// grouping all read ONE list — a second copy is how a value comes to be accepted by the
+// schema and silently missing from the policy.
+var TaintSources = []string{
+	TaintRequest, TaintService, TaintDatastore, TaintModel,
+	TaintEnv, TaintConfig, TaintCLI, TaintLiteral, TaintUnknown,
+}
+
+// Verdict values for ReviewResponse.
+const (
+	VerdictClean     = "clean"
+	VerdictTriggered = "triggered"
+)
+
+// ReviewResponse is the POST /review result: code in, findings out. The rules
+// the judge consulted are NOT included — that is the whole point of the tier.
+type ReviewResponse struct {
+	Verdict string `json:"verdict"` // "clean" | "triggered"
+	// Confidence is the judge's self-reported 0-100 confidence in the verdict
+	// (50 = coin-flip). Telemetry-only flap-calibration instrumentation — recorded on
+	// the audit event, nothing gates on it (it is poorly calibrated).
+	Confidence int       `json:"confidence,omitempty"`
+	Findings   []Finding `json:"findings,omitempty"`
+	// PreexistingDirective is the SERVER-AUTHORED paragraph the client renders verbatim
+	// above the PRE-EXISTING findings — the text that tells the agent what to do about code
+	// it did not write (LEO-171). Empty means the client uses its own compiled-in default,
+	// which is the conservative report-it-to-the-developer wording it has always shipped.
+	//
+	// ⚠️ IT IS ON THE WIRE SO THE WORDING IS NOT HOSTAGE TO A PLUGIN RELEASE. This text is
+	// a prompt: it will be tuned, repeatedly, against how real agents behave. Compiled into
+	// the client, every revision would need a build, a marketplace publish and then every
+	// developer's install to update — and until they all had, different developers would be
+	// getting different instructions with nothing saying so. Server-side, a reword is one
+	// deploy and applies to every install at once.
+	//
+	// Same posture as the local tier's meta-policy, which the client also renders verbatim
+	// from the server rather than holding a copy of.
+	//
+	// ⚠️ IT IS THE ONLY THING THAT VARIES, AND THERE IS DELIBERATELY NO COMPANION FLAG.
+	// An earlier draft paired it with a per-finding `remediate_preexisting` boolean so the
+	// client could group and count differently. That is exactly what must not exist: the
+	// client would then hold a copy of a server-side policy, would have to be updated in
+	// step with it, and the difference would surface in the developer's own notice. The
+	// server decides by choosing the words; the client renders one group, one paragraph,
+	// one code path, and cannot tell which policy produced the text it was handed.
+	//
+	// Consequence to keep in mind rather than fix: the suggest-only exclusion is not
+	// expressed here at all. It does not need to be — a suggest-only finding is already a
+	// separate group on the client, so it can never be reached by this paragraph.
+	//
+	// It is rendered VERBATIM and must therefore stay plain text: no markdown, no
+	// backticks. The client injects the re-wake as plain text, so markup renders literally.
+	PreexistingDirective string `json:"preexisting_directive,omitempty"`
+	// ReviewID correlates a later OutcomeRequest back to this review (server-minted
+	// on a triggered review). The client stashes it with the findings + the "before"
+	// code and echoes it on /outcome once the agent has (maybe) fixed the diff.
+	ReviewID string `json:"review_id,omitempty"`
+}
+
+// OutcomeRequest is the POST /outcome body: AFTER leoprevent blocked and re-woke
+// the agent, the client reports back what the agent did, so the server can re-judge
+// the fix. This is a SYNCHRONOUS, BOUNDED re-verify on the developer's path — the
+// client waits up to OutcomeVerifyDeadline for the still-firing findings (then fails
+// open), so it can warn the dev in-turn when a fix is still vulnerable. This is how
+// "vulns blocked" becomes "vulns actually remediated" + a NO-leoprevent (before) ↔
+// WITH-leoprevent (after) diff.
+type OutcomeRequest struct {
+	ReviewID string `json:"review_id"` // correlates to the ReviewResponse that blocked
+
+	// Resolution marks a CROSS-TURN re-judge of pre-existing findings a PRIOR block
+	// surfaced but the dev hadn't fixed yet — fired on a LATER turn that touches those
+	// files (not the block→re-wake→stop cycle that produces a normal outcome). The
+	// server re-judges exactly the carried-over rules against After and records a
+	// dedicated `kind:"resolution"` event crediting only the newly-resolved pre-existing
+	// findings (no preexisting_total — that was counted by the original outcome). Keeps
+	// the cross-turn fix from double-counting the total or being mistaken for a failed
+	// introduced fix. False ⇒ a normal block-outcome re-judge.
+	Resolution bool `json:"resolution,omitempty"`
+
+	// Attribution, re-sent so the outcome event is self-contained (the audit log is
+	// append-only — the server doesn't look the original up).
+	Repo       string `json:"repo,omitempty"`
+	Developer  string `json:"developer,omitempty"`
+	Agent      string `json:"agent,omitempty"` // "claude" | "codex" | "copilot"
+	AgentModel string `json:"agent_model,omitempty"`
+
+	// Before is the vulnerable code the judge flagged (what the client sent to
+	// /review); After is the same files now (post-fix). Their diff is the
+	// NO_LeoPrevent ↔ With_LeoPrevent delta; After is what the server re-judges.
+	Before []ChangedFile `json:"before,omitempty"`
+	After  []ChangedFile `json:"after,omitempty"`
+
+	// Findings are the violations the original review fired (rule IDs + preexisting
+	// flags). The server re-judges these rules against After to see which cleared.
+	Findings []Finding `json:"findings,omitempty"`
+
+	// AgentResponse is the coding agent's final message after the re-wake — its
+	// reaction to leoprevent (last_assistant_message from the Stop stdin). When the
+	// agent PUSHES BACK, this is the false-positive tuning signal ("this URL is a
+	// hardcoded constant…"). A body.
+	AgentResponse string `json:"agent_response,omitempty"`
+	// Prompt is the developer's own instruction for this turn — the same string /review
+	// already sent as TurnMeta.Prompt, repeated here so the /outcome reason classifier can
+	// read it (LEO-138).
+	//
+	// ⚠️ NO NEW EGRESS CATEGORY, AND WORTH BEING PRECISE ABOUT WHY. An /outcome only ever
+	// follows a BLOCK, so /review has already sent this exact string this turn; this is the
+	// same data on a second endpoint, not a new disclosure. It is NOT persisted again either:
+	// the server reads it and drops it, because the review event already holds it and a
+	// second copy would duplicate a body for nothing.
+	//
+	// ⚠️ IT IS WHAT MAKES `testing_leoprevent` WORK. Measured on the live LeoTrace account,
+	// two thirds of the triggered reviews under one seat are LeoPrevent's own smoke tests —
+	// and their agent REPLIES read like ordinary work ("Hook returned: …"), because the
+	// unsafe code was authored on an earlier turn. The developer's instruction is the thing
+	// that says plainly what the turn was for ("/unsafe", "test if it gets picked up").
+	//
+	// Empty on an older client, which simply leaves the classifier reading the reply alone —
+	// exactly its behaviour before this field existed.
+	Prompt string `json:"prompt,omitempty"`
+	// ReasonsOnly asks the server to CLASSIFY the carried findings' reasons and re-judge
+	// NOTHING. Set only on a Resolution call made because this turn's words suggest a
+	// follow-up was arranged (a ticket raised), not because any flagged file changed.
+	//
+	// ⚠️ IT EXISTS BECAUSE THE DECISION USUALLY LANDS ON A LATER TURN THAN THE BLOCK.
+	// `/outcome` fires at the SECOND Stop of the turn that blocked, so the reply it carries
+	// predates the developer answering: "generate some code" blocks, the agent explains,
+	// and the ticket is created on the NEXT turn in response to "create an issue". That
+	// later turn changes no flagged file, so the ordinary resolution trigger never fires and
+	// the ticket was invisible — on the very shape LEO-138 is named after.
+	//
+	// Re-judging would be wrong here as well as wasteful: no flagged file changed, so an
+	// Opus pass could only repeat what the ledger already says. The server therefore records
+	// reasons alone and reports scored=false, which is what keeps the client's ledger intact.
+	ReasonsOnly bool `json:"reasons_only,omitempty"`
+
+	// Assumptions are the things the agent says it treated as true WITHOUT verifying
+	// this turn ("the caller is already authenticated", "this input is validated
+	// upstream"), parsed back out of AgentResponse deterministically, with no model
+	// call (review.ParseAssumptions).
+	//
+	// ⚠️ ALWAYS EMPTY SINCE LEO-113 — nothing asks for them any more. The re-wake used
+	// to carry review.AssumptionsAsk; it does not, because the ask and the agent's
+	// answer both render in the developer's session (the reasoning is on
+	// review.AssumptionsAsk). The field, the parser and the server-side ingest are kept
+	// so re-enabling is one line, and because dropping a field from the wire would break
+	// every already-recorded event that carries one. Don't remove it, and don't read a
+	// present-tense "the prompt asks for them" back into it.
+	//
+	// COLLECTION ONLY even when it was populated. Nothing gates on these and no surface
+	// renders them. Bodies (model-authored prose), so they are logged only when body
+	// logging is on.
+	//
+	// They ride /outcome rather than /review because that is where the ANSWER landed:
+	// the ask went out on the block, and the agent replied during the re-wake, which the
+	// client reads at the FINAL Stop. So they were captured only on a turn that blocked,
+	// which was the whole population that got asked.
+	Assumptions []string `json:"assumptions,omitempty"`
+	// AssumptionsReported distinguishes "the agent answered and had none" (true, empty
+	// Assumptions) from "the agent never answered" (false) — a slice with omitempty
+	// cannot tell those apart, and they are different facts: the first is a clean empty
+	// result, the second is an agent that ignored the ask, was truncated, or ran on a
+	// surface with no transcript to read the reply back from (copilot). Same shape and
+	// reason as ReviewEvent.AckClassified. Since LEO-113 it is uniformly false, which is
+	// the honest reading: nothing was asked, so nothing was answered.
+	AssumptionsReported bool `json:"assumptions_reported,omitempty"`
+
+	// Full-turn agent token usage + wall-clock, captured at the FINAL Stop so it
+	// SPANS the re-wake fix leoprevent induced. The /review Meta was captured at the
+	// FIRST Stop (pre-re-wake) and therefore UNDER-counts a blocked turn; the
+	// dashboard uses THESE as the authoritative per-turn cost + latency for a blocked
+	// turn (the fix the agent makes after a block IS part of what that agent did).
+	// Metadata only — the prompt is NOT re-sent (it already egressed on /review).
+	InputTokens         int    `json:"input_tokens,omitempty"`
+	CacheCreationTokens int    `json:"cache_creation_input_tokens,omitempty"`
+	CacheReadTokens     int    `json:"cache_read_input_tokens,omitempty"`
+	OutputTokens        int    `json:"output_tokens,omitempty"`
+	DurationMs          int64  `json:"duration_ms,omitempty"`
+	Speed               string `json:"speed,omitempty"` // full-turn speed (Fast mode price tier)
+}
+
+// OutcomeResponse is the /outcome result. The re-verify now runs SYNCHRONOUSLY (the
+// client waits, bounded by OutcomeVerifyDeadline, fail-open) so it can warn the
+// developer IN-TURN — before they close the agent — when the agent's fix is still
+// vulnerable. IntroducedStillFiring carries the introduced findings the re-judge STILL
+// flags (rule + location + issue + fix); empty when the fix is good, or pre-existing-
+// only, or the re-verify was skipped (server at capacity). Accepted=true always means
+// the outcome was recorded.
+type OutcomeResponse struct {
+	Accepted bool `json:"accepted"`
+	// Scored reports whether the re-judge actually RAN and produced per-finding
+	// verdicts. It is false on every no-verdict path — the 202 capacity skip, a
+	// server without a model, original rules missing from the corpus, a re-judge
+	// failure — all of which return EMPTY still-firing lists that are otherwise
+	// indistinguishable from a genuinely clean re-judge. The client must treat an
+	// unscored response as "no verdict" (no still-vulnerable notice, cross-turn
+	// ledger untouched), never as "everything resolved". Additive: an old server
+	// never sets it, so a new client reads its responses as unscored and
+	// conservatively under-credits (fail-safe); old clients ignore the field.
+	Scored                bool      `json:"scored,omitempty"`
+	IntroducedStillFiring []Finding `json:"introduced_still_firing,omitempty"`
+	// PreexistingStillFiring carries the PRE-EXISTING findings the re-judge STILL flags
+	// against the after-code. The client uses it to seed/update its cross-turn ledger:
+	// after the first outcome these are the surfaced pre-existing vulns the dev hasn't
+	// fixed yet (so a later turn touching those files can re-judge them); on a resolution
+	// call it is the remaining-open set (empty ⇒ all resolved, drop the ledger entry).
+	// Excludes any the agent already fixed in-turn, so they are never double-credited.
+	PreexistingStillFiring []Finding `json:"preexisting_still_firing,omitempty"`
+}
+
+// TelemetryRequest is the POST /telemetry body (cloud tier): the coding agent's
+// turn metadata for a turn that did NOT trigger a review, so per-prompt cost /
+// latency analytics is complete instead of covering only reviewed turns. The
+// client fires it fire-and-forget on the no-review Stop exits (no changed files,
+// or an all-inert change the gate dropped). NEVER on the developer's critical path
+// — short timeout, fail-open; the server 202s and only appends one audit record
+// (no model work).
+//
+// Reason distinguishes WHY no review ran (analytics: how many turns were no-op vs
+// inert), and ChangedFiles is the inert-dropped count (0 for no_change). The
+// client DROPS Meta.Prompt before sending — telemetry carries only the dimensions
+// (model, repo, developer, tokens, duration), never the dev's text (minimal
+// egress; the prompt would be dropped server-side anyway, as on a clean verdict).
+type TelemetryRequest struct {
+	Meta         TurnMeta `json:"meta"`
+	Reason       string   `json:"reason"`                  // "no_change" | "inert"
+	ChangedFiles int      `json:"changed_files,omitempty"` // inert-dropped file count (0 for no_change)
+}
+
+// Reason values for TelemetryRequest.
+const (
+	TelemetryNoChange = "no_change" // the turn produced no changed files at all
+	TelemetryInert    = "inert"     // changed files existed but were all provably inert (gate-dropped)
+)
+
+// TelemetryResponse is the /telemetry ack — the record is appended synchronously
+// before this returns, so it only confirms acceptance.
+type TelemetryResponse struct {
+	Accepted bool `json:"accepted"`
+}
+
+// RulesRequest is the POST /rules body (local tier): rule IDs only, never code.
+type RulesRequest struct {
+	IDs []string `json:"ids"`
+}
+
+// RulesResponse returns the requested rule content plus the meta-policy the
+// on-device reviewer must apply. Unknown IDs are silently omitted.
+type RulesResponse struct {
+	Rules      []rulespec.Rule `json:"rules"`
+	MetaPolicy string          `json:"meta_policy"`
+}

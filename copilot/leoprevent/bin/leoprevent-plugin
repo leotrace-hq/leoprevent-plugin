@@ -1,0 +1,41 @@
+#!/bin/sh
+# LeoPrevent plugin launcher — execs the client binary matching this host's OS/arch.
+# One marketplace repo ships every platform's binary; this picks the right one.
+#
+# FAIL-OPEN everywhere (exit 0, never block the agent's stop) per the LeoPrevent
+# contract: an unsupported host or a missing binary must never trap the developer.
+#
+# Config resolution is unaffected: the real binary still lives in this bin/ dir, so
+# the client walks one dir up to find <plugin>/leoprevent.json exactly as before.
+set -e
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+os=$(uname -s 2>/dev/null || echo unknown)
+arch=$(uname -m 2>/dev/null || echo unknown)
+case "$os" in
+  Darwin) os=darwin ;;
+  Linux)  os=linux ;;
+  MINGW*|MSYS*|CYGWIN*)
+    # Windows, reached through Git Bash (Claude Code uses Git Bash for hook
+    # commands when Git for Windows is installed). PowerShell/cmd never run this
+    # script — they resolve the extensionless hook command straight to the
+    # sibling leoprevent-plugin.exe via PATHEXT. Same fail-open contract.
+    win="$dir/leoprevent-plugin.exe"
+    if [ ! -f "$win" ]; then
+      echo "leoprevent: no Windows binary at $win — skipping review" >&2; exit 0
+    fi
+    exec "$win" "$@" ;;
+  *) echo "leoprevent: unsupported OS '$os' — skipping review" >&2; exit 0 ;;
+esac
+case "$arch" in
+  arm64|aarch64) arch=arm64 ;;
+  x86_64|amd64)  arch=amd64 ;;
+  *) echo "leoprevent: unsupported arch '$arch' — skipping review" >&2; exit 0 ;;
+esac
+
+bin="$dir/leoprevent-plugin-$os-$arch"
+if [ ! -x "$bin" ]; then
+  echo "leoprevent: no binary for $os/$arch at $bin — skipping review" >&2
+  exit 0
+fi
+exec "$bin" "$@"
