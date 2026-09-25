@@ -1,0 +1,21 @@
+{
+  "name": "leotrace-dev",
+  "interface": {
+    "displayName": "LeoTrace"
+  },
+  "plugins": [
+    {
+      "name": "leoprevent-dev",
+      "description": "Makes Codex generate more secure code. A Stop hook re-wakes the agent to review and fix its own changes against LeoTrace's security rules before the developer sees \"done\". [dev channel]",
+      "version": "0.2.31-dev.dc18e3b",
+      "source": {
+        "source": "local",
+        "path": "./.agents/plugins/leoprevent"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Security"
+    }
+  ]
+}
