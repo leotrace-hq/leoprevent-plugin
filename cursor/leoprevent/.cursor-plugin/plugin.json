@@ -1,0 +1,9 @@
+{
+  "name": "leoprevent",
+  "version": "0.2.37",
+  "description": "Reviews Cursor Agent changes and requests a follow-up when security findings need attention.",
+  "author": {
+    "name": "LeoTrace"
+  },
+  "hooks": "./hooks/hooks.cursor.json"
+}
