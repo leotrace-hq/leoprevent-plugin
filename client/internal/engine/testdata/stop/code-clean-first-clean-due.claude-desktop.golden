@@ -1,0 +1,2 @@
+== first Stop
+{"decision":"block","reason":"LeoPrevent reviewed this turn and found nothing. Reply with exactly this markdown and nothing else, then end your turn without doing any other work:\n\n\u003e 🛡️ **LeoPrevent** · automated security review, not part of your request\n\u003e \n\u003e Found no new or pre-existing flaws. You will only see LeoPrevent again when it finds something.\n","systemMessage":"🛡️ LeoPrevent · found no new or pre-existing flaws. You will only see LeoPrevent again when it finds something."}
