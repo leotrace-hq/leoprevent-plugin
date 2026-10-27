@@ -1,0 +1,4 @@
+== first Stop
+{"decision":"block","reason":"FIX THESE FINDINGS","systemMessage":"🛡️ LeoPrevent · security review (1 file)"}
+== second Stop
+{"systemMessage":"⚠️ LeoPrevent · your fix is still vulnerable. The re-check after your change still flags 1 finding:\n• SQL Injection: app.py:2\nThis is a non-blocking warning; please review before you ship."}
