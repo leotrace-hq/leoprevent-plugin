@@ -1,0 +1,20 @@
+{
+  "name": "leoprevent-windows",
+  "version": "0.2.47",
+  "description": "For Windows. Reviews Cursor Agent changes and requests a follow-up when security findings need attention. Requires a LeoTrace account; changed code is sent to LeoTrace for review.",
+  "author": {
+    "name": "LeoTrace"
+  },
+  "homepage": "https://leotrace.io",
+  "repository": "https://github.com/leotrace-hq/leoprevent-plugin",
+  "license": "Apache-2.0",
+  "logo": "assets/logo.png",
+  "keywords": [
+    "security",
+    "code-review",
+    "appsec",
+    "secure-coding",
+    "vulnerabilities"
+  ],
+  "hooks": "./hooks/hooks.cursor.json"
+}
