@@ -1,0 +1,21 @@
+{
+  "name": "leotrace-dev",
+  "owner": {
+    "name": "LeoTrace"
+  },
+  "metadata": {
+    "description": "LeoTrace security plugins for coding agents."
+  },
+  "plugins": [
+    {
+      "name": "leoprevent-dev",
+      "source": "./cursor/leoprevent",
+      "description": "For macOS and Linux. Reviews Cursor Agent changes and requests a follow-up when security findings need attention. Requires a LeoTrace account; changed code is sent to LeoTrace for review."
+    },
+    {
+      "name": "leoprevent-dev-windows",
+      "source": "./cursor-windows/leoprevent",
+      "description": "For Windows. Reviews Cursor Agent changes and requests a follow-up when security findings need attention. Requires a LeoTrace account; changed code is sent to LeoTrace for review."
+    }
+  ]
+}
