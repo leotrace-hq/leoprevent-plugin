@@ -1,0 +1,11 @@
+hooks:
+  pre_llm_call:
+    - command: "~/.hermes/leoprevent/bin/leoprevent-plugin --agent=hermes"
+      timeout: 30
+  pre_tool_call:
+    - matcher: "write_file|patch|terminal"
+      command: "~/.hermes/leoprevent/bin/leoprevent-plugin --agent=hermes"
+      timeout: 10
+  pre_verify:
+    - command: "~/.hermes/leoprevent/bin/leoprevent-plugin --agent=hermes"
+      timeout: 300
