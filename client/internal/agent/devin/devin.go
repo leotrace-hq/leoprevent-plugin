@@ -1,0 +1,82 @@
+package devin
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/agent"
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/review"
+	"github.com/leotrace-hq/leoprevent-plugin/client/internal/transcript"
+	"github.com/leotrace-hq/leoprevent-plugin/wire"
+)
+
+type Adapter struct{}
+
+func New() *Adapter           { return &Adapter{} }
+func (*Adapter) Name() string { return "devin" }
+func (*Adapter) Environment(
+	agent.Event,
+) agent.Environment {
+	return agent.Environment{Name: wire.EnvDevinCLI}
+}
+
+func (*Adapter) ParseEvent(
+	stdin []byte,
+) (agent.Event, error) {
+	var p struct {
+		Name      string         `json:"hook_event_name"`
+		SessionID string         `json:"session_id"`
+		PromptID  string         `json:"prompt_id"`
+		Cwd       string         `json:"cwd"`
+		Active    bool           `json:"stop_hook_active"`
+		Reply     string         `json:"last_assistant_message"`
+		Input     map[string]any `json:"tool_input"`
+	}
+	if err := json.Unmarshal(stdin, &p); err != nil {
+		return agent.Event{}, err
+	}
+	switch p.Name {
+	case agent.EventUserPromptSubmit, agent.EventPreToolUse, "Stop":
+	default:
+		return agent.Event{}, fmt.Errorf("unsupported Devin event %q", p.Name)
+	}
+	if p.Cwd == "" {
+		p.Cwd = os.Getenv("DEVIN_PROJECT_DIR")
+	}
+	return agent.Event{Name: p.Name, SessionID: p.SessionID, PromptID: p.PromptID, Cwd: p.Cwd, StopHookActive: p.Active, LastAssistantMessage: p.Reply, EditPaths: agent.EditPathsFromToolInput(p.Input)}, nil
+}
+
+func (*Adapter) ChangedFiles(
+	agent.Event,
+) ([]transcript.Change, error) {
+	return nil, nil
+}
+func (*Adapter) TurnMeta(
+	agent.Event,
+) (agent.TurnMeta, error) {
+	return agent.TurnMeta{}, nil
+}
+func (*Adapter) AgentReply(
+	agent.Event,
+) (string, error) {
+	return "", nil
+}
+func (*Adapter) DeliverReview(
+	prompt, banner string,
+	_ int,
+	_ []wire.Finding,
+	_ string,
+) ([]byte, error) {
+	return review.RewakeJSON(prompt, banner)
+}
+func (*Adapter) DeliverNotice(
+	message string,
+) ([]byte, error) {
+	return review.NoticeJSON(message)
+}
+func (*Adapter) DeliverPromptNotice(
+	message, context string,
+) ([]byte, error) {
+	return review.PromptNoticeJSON(message, context)
+}
