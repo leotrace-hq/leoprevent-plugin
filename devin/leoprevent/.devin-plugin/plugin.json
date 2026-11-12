@@ -1,0 +1,8 @@
+{
+  "name": "leoprevent",
+  "version": "0.2.40",
+  "description": "Reviews Devin CLI changes and sends security findings through its Stop hook.",
+  "author": {
+    "name": "LeoTrace"
+  }
+}
