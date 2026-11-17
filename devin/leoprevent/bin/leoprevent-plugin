@@ -1,0 +1,218 @@
+#!/bin/sh
+# LeoPrevent plugin launcher — execs the client binary matching this host's OS/arch.
+# One marketplace repo ships every platform's binary; this picks the right one.
+#
+# FAIL-OPEN everywhere (exit 0, never block the agent's stop) per the LeoPrevent
+# contract: an unsupported host or a missing binary must never trap the developer.
+#
+# Config resolution is unaffected: the real binary still lives in this bin/ dir, so
+# the client walks one dir up to find <plugin>/leoprevent.json exactly as before.
+#
+# ── FETCH ON FIRST RUN (LEO-571) ─────────────────────────────────────────────
+# The Claude plugin directory refuses any file over 5 MiB, and every client binary is
+# ~16 MiB, so the DIRECTORY build ships this launcher plus bin/checksums.txt and no
+# binaries. When the binary for this host is missing AND checksums.txt exists, the
+# launcher downloads it from the GitHub release named in that file, checks its SHA-256
+# against the pin, and only then runs it.
+#
+# The marketplace bundle ships the binaries and NO checksums.txt, so it takes the exec
+# branch before any of this is reached: its behaviour is byte-for-byte what it was.
+#
+# Three properties are load-bearing:
+#   * NOTHING UNVERIFIED IS EVER EXECUTED. A hash mismatch, a missing pin, or a host with
+#     no SHA-256 tool deletes the download. The pin is in the plugin folder the directory
+#     reviewed; the URL is fixed and has no environment override.
+#   * IT NEVER HOLDS A TURN HOSTAGE. The download gets FETCH_WAIT seconds (inside the
+#     30s UserPromptSubmit timeout); past that it carries on DETACHED and this turn goes
+#     unreviewed. The detached job's stdio is /dev/null, or the agent would wait on it.
+#   * A FAILURE IS SAID ONCE. A Stop with no binary prints a systemMessage-only notice
+#     (no "decision", so the stop proceeds), at most once per plugin version.
+set -e
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+# Fixed release origin. Deliberately NOT read from the environment: a variable that
+# redirects where an executable comes from is a variable that can be set by anyone who
+# can set one.
+RELEASE_BASE="https://github.com/leotrace-hq/leoprevent-plugin/releases/download"
+FETCH_WAIT=20
+# Hard ceilings on what a download may cost before its hash is known. The real assets are
+# ~5.5 MiB compressed and ~17 MiB unzipped; these leave room to grow and stop a hostile or
+# corrupted response (a gzip bomb) from filling the disk before verification runs.
+MAX_COMPRESSED=33554432   # 32 MiB
+MAX_BINARY=67108864       # 64 MiB
+
+# hashOf prints the SHA-256 of $1, or nothing when no tool is available.
+hashOf() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 "$1" | awk '{print $NF}'
+  fi
+}
+
+# fetchVerified downloads asset $1 to path $2, gunzips it, and installs it only if its
+# hash equals the pin for $1 in checksums.txt. Returns non-zero on ANY failure, leaving
+# nothing behind. Safe to run concurrently: a mkdir lock admits one fetch at a time.
+fetchVerified() {
+  asset=$1; dest=$2
+  sums="$dir/checksums.txt"
+  version=$(awk '$1=="version"{print $2; exit}' "$sums")
+  want=$(awk -v a="$asset" '$2==a{print $1; exit}' "$sums")
+  [ -n "$version" ] && [ -n "$want" ] || return 1
+
+  lock="$dir/.fetch.lock"
+  if ! mkdir "$lock" 2>/dev/null; then
+    # A lock older than 10 minutes belongs to a fetch that died; take it over.
+    if [ -n "$(find "$lock" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then
+      rmdir "$lock" 2>/dev/null || true
+      mkdir "$lock" 2>/dev/null || return 1
+    else
+      return 1
+    fi
+  fi
+  chmod go-w "$dir" 2>/dev/null || true   # only the owner may write where we install
+  tmp="$dir/.fetch.$$"
+  rc=1
+  url="$RELEASE_BASE/v$version/$asset.gz"
+  if command -v curl >/dev/null 2>&1; then
+    curl --proto '=https' --tlsv1.2 -fsSL --max-time 300 --max-filesize "$MAX_COMPRESSED" \
+      -o "$tmp.gz" "$url" 2>/dev/null && rc=0
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q --https-only -T 300 -O "$tmp.gz" "$url" 2>/dev/null && rc=0
+  fi
+  # wget has no --max-filesize, so the compressed ceiling is re-checked here for both.
+  if [ "$rc" = 0 ] && [ "$(wc -c < "$tmp.gz" | tr -d " ")" -gt "$MAX_COMPRESSED" ]; then rc=1; fi
+  if [ "$rc" = 0 ]; then
+    rc=1
+    # Bounded decompression: head stops the stream at MAX_BINARY, and output that REACHES
+    # the ceiling is treated as oversized, never as a binary to hash. A truncated or
+    # corrupt stream that stays under it simply fails the hash check below.
+    gunzip -c "$tmp.gz" 2>/dev/null | head -c "$MAX_BINARY" > "$tmp" 2>/dev/null || true
+    if [ -s "$tmp" ] && [ "$(wc -c < "$tmp" | tr -d " ")" -lt "$MAX_BINARY" ]; then
+      got=$(hashOf "$tmp")
+      if [ -n "$got" ] && [ "$got" = "$want" ]; then
+        chmod 755 "$tmp" && mv -f "$tmp" "$dest" && rc=0
+      fi
+    fi
+  fi
+  rm -f "$tmp" "$tmp.gz"
+  rmdir "$lock" 2>/dev/null || true
+  return "$rc"
+}
+
+# ensure makes $2 exist (fetching asset $1 if this is a directory build), or fails.
+# Waits up to FETCH_WAIT seconds; a slower download continues detached for next time.
+ensure() {
+  asset=$1; dest=$2
+  [ -f "$dest" ] && return 0
+  [ -f "$dir/checksums.txt" ] || return 1
+  # Detached: survives this process, and holds none of the agent's pipes open.
+  ( fetchVerified "$asset" "$dest" ) </dev/null >/dev/null 2>&1 &
+  i=0
+  while [ "$i" -lt "$FETCH_WAIT" ]; do
+    [ -f "$dest" ] && return 0
+    sleep 1
+    i=$((i + 1))
+  done
+  [ -f "$dest" ]
+}
+
+# verifyBeforeExec re-checks, IMMEDIATELY before exec, that a directory build's binary
+# still matches its pin, so verification is the last gate before execution rather than
+# a one-off at download time. A mismatch deletes the file (the next turn re-fetches a
+# good copy) and skips the review. The marketplace bundle has no checksums.txt and is
+# not re-hashed, so its behaviour is unchanged.
+#
+# Scope, stated honestly: the pin lives in the same plugin folder as the binary, so this
+# defends against a binary corrupted or swapped on its own, not against someone who can
+# rewrite the whole folder (they could rewrite this launcher too).
+#
+# RESIDUAL WINDOW, accepted: between the hash and the exec below, a process that can
+# write this folder could still swap the file. Two ways to close it were declined:
+#   * exec a verified private copy: the client finds leoprevent.json relative to its OWN
+#     path, so a copy in a temp dir would load no config and review nothing (fail-open
+#     with no review, on every turn), and it would copy ~17 MiB per hook;
+#   * exec through an open descriptor (/proc/self/fd/N): Linux only, not portable sh.
+# Neither changes the threat model above: anyone able to win that race can already edit
+# this launcher, which runs first. What IS enforced (ownerOnlyOrRefuse, Unix): only the
+# owning user can write the binary or its folder, so winning the race needs that user's
+# own privileges. Recorded as an accepted risk in docs/security.md.
+verifyBeforeExec() {
+  asset=$1; path=$2
+  sums="$dir/checksums.txt"
+  [ -f "$sums" ] || return 0
+  want=$(awk -v a="$asset" '$2==a{print $1; exit}' "$sums")
+  got=$(hashOf "$path")
+  if [ -n "$want" ] && [ -n "$got" ] && [ "$got" = "$want" ]; then
+    return 0
+  fi
+  rm -f "$path" 2>/dev/null || true
+  unavailable "binary at $path does not match its pinned hash"
+}
+
+# ownerOnlyOrRefuse narrows the check-to-exec window to the owning user: a directory
+# build refuses to run a binary when the binary or its bin/ folder can be written by
+# group or others, because then someone other than this user could swap it after it was
+# hashed. The fetch path creates both owner-only, so a refusal means something changed
+# the permissions afterwards. Unix only: Git Bash reports emulated modes on Windows,
+# where this would refuse working installs; there the residual risk is documented in
+# docs/security.md. The marketplace bundle has no checksums.txt and is not checked.
+ownerOnlyOrRefuse() {
+  path=$1
+  [ -f "$dir/checksums.txt" ] || return 0
+  if [ -n "$(find "$dir" "$path" -maxdepth 0 -perm -0020 2>/dev/null)" ] ||
+     [ -n "$(find "$dir" "$path" -maxdepth 0 -perm -0002 2>/dev/null)" ]; then
+    unavailable "$path or its folder is writable by other users"
+  fi
+}
+
+# unavailable explains a skipped review. On a Stop it also prints the non-blocking
+# notice, once per plugin version; stdin is read only here, where nothing else needs it.
+unavailable() {
+  echo "leoprevent: $1 — skipping review" >&2
+  [ -f "$dir/checksums.txt" ] || exit 0
+  [ -t 0 ] && exit 0   # run by hand from a terminal: there is no hook event to read
+  event=$(cat 2>/dev/null | tr -d '\n' | grep -o '"hook_event_name"[[:space:]]*:[[:space:]]*"[A-Za-z]*"' | head -1)
+  case "$event" in *'"Stop"'*) ;; *) exit 0 ;; esac
+  version=$(awk '$1=="version"{print $2; exit}' "$dir/checksums.txt")
+  marker="$dir/.notified-$version"
+  [ -f "$marker" ] && exit 0
+  : > "$marker" 2>/dev/null || true
+  printf '%s\n' '{"systemMessage":"LeoPrevent could not download its client, so this turn was not reviewed. It retries on your next prompt; check that this machine can reach github.com."}'
+  exit 0
+}
+
+os=$(uname -s 2>/dev/null || echo unknown)
+arch=$(uname -m 2>/dev/null || echo unknown)
+case "$os" in
+  Darwin) os=darwin ;;
+  Linux)  os=linux ;;
+  MINGW*|MSYS*|CYGWIN*)
+    # Windows, reached through Git Bash (Claude Code uses Git Bash for hook
+    # commands when Git for Windows is installed). PowerShell/cmd never run this
+    # script — they resolve the extensionless hook command straight to the
+    # sibling leoprevent-plugin.exe via PATHEXT. Same fail-open contract.
+    # A directory build ships no .exe, so PowerShell/cmd has nothing to resolve
+    # there: Git Bash is the only Windows path for it.
+    win="$dir/leoprevent-plugin.exe"
+    ensure leoprevent-plugin-windows-amd64.exe "$win" || unavailable "no Windows binary at $win"
+    verifyBeforeExec leoprevent-plugin-windows-amd64.exe "$win"
+    exec "$win" "$@" ;;
+  *) echo "leoprevent: unsupported OS '$os' — skipping review" >&2; exit 0 ;;
+esac
+case "$arch" in
+  arm64|aarch64) arch=arm64 ;;
+  x86_64|amd64)  arch=amd64 ;;
+  *) echo "leoprevent: unsupported arch '$arch' — skipping review" >&2; exit 0 ;;
+esac
+
+bin="$dir/leoprevent-plugin-$os-$arch"
+if [ ! -x "$bin" ]; then
+  ensure "leoprevent-plugin-$os-$arch" "$bin" || true
+  [ -x "$bin" ] || unavailable "no binary for $os/$arch at $bin"
+fi
+ownerOnlyOrRefuse "$bin"
+verifyBeforeExec "leoprevent-plugin-$os-$arch" "$bin"
+exec "$bin" "$@"
