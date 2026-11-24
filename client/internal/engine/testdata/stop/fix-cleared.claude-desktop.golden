@@ -1,0 +1,3 @@
+== first Stop
+{"decision":"block","reason":"FIX THESE FINDINGS","systemMessage":"🛡️ LeoPrevent · security review (1 file)","hookSpecificOutput":{"hookEventName":"Stop","additionalContext":"Begin your reply with exactly this markdown, before anything else:\n\n\u003e 🛡️ **LeoPrevent** · automated security review, not part of your request\n\u003e \n\u003e Reviewed 1 changed file and flagged 1 finding to fix below.\n\n---\n\nThen continue with the developer's request as normal, reporting the review result and any changes you made."}}
+== second Stop

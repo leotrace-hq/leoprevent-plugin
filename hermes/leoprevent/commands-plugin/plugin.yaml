@@ -1,0 +1,5 @@
+{
+  "name": "leoprevent",
+  "version": "0.2.52",
+  "description": "LeoPrevent commands. Reviews run through separate shell hooks."
+}
