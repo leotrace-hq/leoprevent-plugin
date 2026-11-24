@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "\"${CURSOR_PLUGIN_ROOT}/bin/leoprevent-plugin\" --agent=cursor",
+        "timeout": 30
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "\"${CURSOR_PLUGIN_ROOT}/bin/leoprevent-plugin\" --agent=cursor",
+        "timeout": 10
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "\"${CURSOR_PLUGIN_ROOT}/bin/leoprevent-plugin\" --agent=cursor",
+        "timeout": 10
+      }
+    ],
+    "stop": [
+      {
+        "command": "\"${CURSOR_PLUGIN_ROOT}/bin/leoprevent-plugin\" --agent=cursor",
+        "timeout": 600,
+        "loop_limit": 2
+      }
+    ]
+  }
+}

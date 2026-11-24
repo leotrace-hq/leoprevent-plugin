@@ -1,0 +1,2849 @@
+{
+  "lockfileBasenames": [
+    "conda-lock.yml",
+    "go.sum",
+    "gradle.lockfile",
+    "npm-shrinkwrap.json",
+    "package-lock.json",
+    "packages.lock.json",
+    "pnpm-lock.yaml"
+  ],
+  "generatedSuffixes": [
+    ".bundle.js",
+    ".designer.cs",
+    ".freezed.dart",
+    ".g.cs",
+    ".g.dart",
+    ".gen.cs",
+    ".gen.dart",
+    ".gen.go",
+    ".gen.js",
+    ".gen.kt",
+    ".gen.mjs",
+    ".gen.php",
+    ".gen.py",
+    ".gen.rb",
+    ".gen.rs",
+    ".gen.ts",
+    ".gen.tsx",
+    ".gr.dart",
+    ".grpc.swift",
+    ".min.css",
+    ".min.js",
+    ".min.mjs",
+    ".mocks.dart",
+    ".pb.cc",
+    ".pb.go",
+    ".pb.h",
+    ".pb.swift",
+    "_grpc_pb.d.ts",
+    "_grpc_pb.js",
+    "_pb.d.ts",
+    "_pb.js",
+    "_pb.ts",
+    "_pb2.py",
+    "_pb2.pyi",
+    "_pb2_grpc.py",
+    "_pb2_grpc.pyi"
+  ],
+  "vendoredSegments": [
+    ".angular",
+    ".aws-sam",
+    ".cache",
+    ".docusaurus",
+    ".eggs",
+    ".expo",
+    ".git",
+    ".gradle",
+    ".hg",
+    ".hypothesis",
+    ".mypy_cache",
+    ".netlify",
+    ".next",
+    ".nox",
+    ".nuxt",
+    ".nyc_output",
+    ".output",
+    ".parcel-cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".serverless",
+    ".sst",
+    ".svelte-kit",
+    ".svn",
+    ".terraform",
+    ".terragrunt-cache",
+    ".tox",
+    ".turbo",
+    ".venv",
+    ".vercel",
+    ".vite",
+    ".wrangler",
+    "Pods",
+    "__pycache__",
+    "__snapshots__",
+    "cdk.out",
+    "jspm_packages",
+    "site-packages",
+    "venv"
+  ],
+  "vendoredPathFragments": [
+    "/.nx/cache/",
+    "/.pnp/cache/",
+    "/.yarn/cache/",
+    "/tmp/cache/"
+  ],
+  "ambiguousBuildSegments": [
+    "Debug",
+    "Release",
+    "build",
+    "cjs",
+    "obj",
+    "out",
+    "target",
+    "umd"
+  ],
+  "testSegments": [
+    "__tests__",
+    "cypress",
+    "e2e",
+    "playwright"
+  ],
+  "ambiguousTestSegments": [
+    "test",
+    "tests"
+  ],
+  "testBasenames": [
+    "conftest.py",
+    "jest.config.js",
+    "jest.config.ts",
+    "jest.setup.js",
+    "jest.setup.ts",
+    "karma.conf.js",
+    "phpunit.xml",
+    "phpunit.xml.dist",
+    "playwright.config.ts",
+    "tsconfig.spec.json",
+    "vitest.config.js",
+    "vitest.config.ts"
+  ],
+  "inertBackupExts": [
+    ".backup",
+    ".bak",
+    ".bkp",
+    ".old",
+    ".orig"
+  ],
+  "databaseBasenames": [
+    "appendonly.aof",
+    "ibdata1",
+    "ibtmp1",
+    "pg_control",
+    "pg_version",
+    "postmaster.opts",
+    "postmaster.pid",
+    "wiredtiger",
+    "wiredtiger.lock",
+    "wiredtiger.turtle"
+  ],
+  "databaseNumberedPrefixes": [
+    "binlog.",
+    "ib_logfile",
+    "mysql-bin.",
+    "wiredtigerlog.",
+    "wiredtigerpreplog."
+  ],
+  "databaseExts": [
+    ".accdb",
+    ".aof",
+    ".bson",
+    ".db-journal",
+    ".db-shm",
+    ".db-wal",
+    ".dbf",
+    ".duckdb",
+    ".dump",
+    ".fdb",
+    ".ibd",
+    ".ldb",
+    ".ldf",
+    ".mdb",
+    ".mdbx",
+    ".mdf",
+    ".myd",
+    ".myi",
+    ".ndf",
+    ".pgdump",
+    ".realm",
+    ".sqlite-journal",
+    ".sqlite-shm",
+    ".sqlite-wal",
+    ".sqlite3-journal",
+    ".sqlite3-shm",
+    ".sqlite3-wal",
+    ".sst",
+    ".wt"
+  ],
+  "databaseSegments": [
+    "#innodb_redo",
+    "#innodb_temp",
+    "appendonlydir",
+    "diagnostic.data",
+    "pg_clog",
+    "pg_commit_ts",
+    "pg_dynshmem",
+    "pg_logical",
+    "pg_multixact",
+    "pg_notify",
+    "pg_replslot",
+    "pg_serial",
+    "pg_snapshots",
+    "pg_stat_tmp",
+    "pg_subtrans",
+    "pg_tblspc",
+    "pg_twophase",
+    "pg_wal",
+    "pg_xact",
+    "pg_xlog"
+  ],
+  "migrationSegments": [
+    "migrate",
+    "migration",
+    "migrations"
+  ],
+  "migrationName": "^(\\d{8,14}[_-]|v\\d+(\\.\\d+)*__|\\d{3,5}_|version\\d{8,})",
+  "prismaFolder": "^\\d+_",
+  "inertExtensions": [
+    ".7z",
+    ".a",
+    ".aac",
+    ".adoc",
+    ".ai",
+    ".arb",
+    ".avi",
+    ".avif",
+    ".avro",
+    ".backup",
+    ".bak",
+    ".beam",
+    ".bin",
+    ".bkp",
+    ".bmp",
+    ".bz2",
+    ".class",
+    ".cpuprofile",
+    ".css",
+    ".csv",
+    ".dat",
+    ".db",
+    ".diff",
+    ".dll",
+    ".dmp",
+    ".dylib",
+    ".ear",
+    ".eot",
+    ".err",
+    ".exe",
+    ".fig",
+    ".flac",
+    ".gem",
+    ".geojson",
+    ".gif",
+    ".gz",
+    ".h5",
+    ".hdf5",
+    ".heapsnapshot",
+    ".heic",
+    ".heif",
+    ".hprof",
+    ".icns",
+    ".ico",
+    ".iml",
+    ".import",
+    ".jar",
+    ".jpeg",
+    ".jpg",
+    ".jsonl",
+    ".lcov",
+    ".less",
+    ".lib",
+    ".lock",
+    ".log",
+    ".m4a",
+    ".map",
+    ".markdown",
+    ".md",
+    ".mdc",
+    ".mdmp",
+    ".mkv",
+    ".mmd",
+    ".mo",
+    ".mov",
+    ".mp3",
+    ".mp4",
+    ".mtl",
+    ".nar",
+    ".ndjson",
+    ".node",
+    ".npy",
+    ".npz",
+    ".nupkg",
+    ".o",
+    ".obj",
+    ".ogg",
+    ".old",
+    ".opus",
+    ".orc",
+    ".orig",
+    ".otf",
+    ".out",
+    ".parquet",
+    ".part",
+    ".patch",
+    ".pcss",
+    ".pdb",
+    ".pdf",
+    ".pickle",
+    ".pid",
+    ".pkl",
+    ".png",
+    ".po",
+    ".postcss",
+    ".pot",
+    ".pprof",
+    ".prof",
+    ".psd",
+    ".puml",
+    ".pyc",
+    ".pyd",
+    ".pyo",
+    ".rar",
+    ".rbi",
+    ".rdb",
+    ".rej",
+    ".rlib",
+    ".rmeta",
+    ".rst",
+    ".rtf",
+    ".sass",
+    ".scss",
+    ".sketch",
+    ".so",
+    ".sqlite",
+    ".sqlite3",
+    ".srt",
+    ".styl",
+    ".stylus",
+    ".swn",
+    ".swo",
+    ".swp",
+    ".tar",
+    ".temp",
+    ".tgz",
+    ".tmp",
+    ".tsbuildinfo",
+    ".tsv",
+    ".ttf",
+    ".txt",
+    ".uid",
+    ".vtt",
+    ".war",
+    ".wasm",
+    ".wav",
+    ".webm",
+    ".webp",
+    ".whl",
+    ".woff",
+    ".woff2",
+    ".xlf",
+    ".xliff",
+    ".xz",
+    ".zip",
+    ".zst"
+  ],
+  "checksumBasenames": [
+    "sha256sums",
+    "sha512sums"
+  ],
+  "enryVendor": "(?:(\\.|-)min\\.(js|css)$)|(?:([^\\s]*)import\\.(css|less|scss|styl)$)|(?:(3rd|[Tt]hird)[-_]?[Pp]arty/)|(?:(.*?)\\.d\\.ts$)|(?:(^|\\/)d3(\\.v\\d+)?([^.]*)\\.js$)|(?:\\.xctemplate/)|(?:\\.imageset/)|(?:-vsdoc\\.js$)|(?:\\.intellisense\\.js$)|(?:^(?:(?:[Dd]ependencies/)|(?:deps/)|(?:rebar$)|(?:debian/)))|(?:(?:^|/)(?:(?:dist/)|(?:configure$)|(?:config\\.guess$)|(?:config\\.sub$)|(?:aclocal\\.m4)|(?:libtool\\.m4)|(?:ltoptions\\.m4)|(?:ltsugar\\.m4)|(?:ltversion\\.m4)|(?:lt~obsolete\\.m4)|(?:dotnet-install\\.(ps1|sh)$)|(?:cpplint\\.py)|(?:node_modules/)|(?:\\.yarn/releases/)|(?:\\.yarn/plugins/)|(?:\\.yarn/sdks/)|(?:\\.yarn/versions/)|(?:\\.yarn/unplugged/)|(?:_esy$)|(?:bower_components/)|(?:erlang\\.mk)|(?:Godeps/_workspace/)|(?:testdata/)|(?:\\.indent\\.pro)|(?:bootstrap([^/.]*)(\\..*)?\\.(js|css|less|scss|styl)$)|(?:custom\\.bootstrap([^\\s]*)(js|css|less|scss|styl)$)|(?:font-?awesome\\.(css|less|scss|styl)$)|(?:font-?awesome/.*\\.(css|less|scss|styl)$)|(?:foundation\\.(css|less|scss|styl)$)|(?:normalize\\.(css|less|scss|styl)$)|(?:skeleton\\.(css|less|scss|styl)$)|(?:[Bb]ourbon/.*\\.(css|less|scss|styl)$)|(?:animate\\.(css|less|scss|styl)$)|(?:materialize\\.(css|less|scss|styl|js)$)|(?:select2/.*\\.(css|scss|js)$)|(?:bulma\\.(css|sass|scss)$)|(?:vendors?/)|(?:[Ee]xtern(als?)?/)|(?:[Vv]+endor/)|(?:run\\.n$)|(?:bootstrap-datepicker/)|(?:jquery([^.]*)\\.js$)|(?:jquery\\-\\d\\.\\d+(\\.\\d+)?\\.js$)|(?:jquery\\-ui(\\-\\d\\.\\d+(\\.\\d+)?)?(\\.\\w+)?\\.(js|css)$)|(?:jquery\\.(ui|effects)\\.([^.]*)\\.(js|css)$)|(?:jquery\\.fn\\.gantt\\.js)|(?:jquery\\.fancybox\\.(js|css))|(?:fuelux\\.js)|(?:jquery\\.fileupload(-\\w+)?\\.js$)|(?:jquery\\.dataTables\\.js)|(?:bootbox\\.js)|(?:pdf\\.worker\\.js)|(?:slick\\.\\w+.js$)|(?:Leaflet\\.Coordinates-\\d+\\.\\d+\\.\\d+\\.src\\.js$)|(?:leaflet\\.draw-src\\.js)|(?:leaflet\\.draw\\.css)|(?:Control\\.FullScreen\\.css)|(?:Control\\.FullScreen\\.js)|(?:leaflet\\.spin\\.js)|(?:wicket-leaflet\\.js)|(?:\\.sublime-project)|(?:\\.sublime-workspace)|(?:\\.vscode/)|(?:prototype(.*)\\.js$)|(?:effects\\.js$)|(?:controls\\.js$)|(?:dragdrop\\.js$)|(?:mootools([^.]*)\\d+\\.\\d+.\\d+([^.]*)\\.js$)|(?:dojo\\.js$)|(?:MochiKit\\.js$)|(?:yahoo-([^.]*)\\.js$)|(?:yui([^.]*)\\.js$)|(?:ckeditor\\.js$)|(?:tiny_mce([^.]*)\\.js$)|(?:tiny_mce/(langs|plugins|themes|utils))|(?:ace-builds/)|(?:fontello(.*?)\\.css$)|(?:MathJax/)|(?:Chart\\.js$)|(?:[Cc]ode[Mm]irror/(\\d+\\.\\d+/)?(lib|mode|theme|addon|keymap|demo))|(?:shBrush([^.]*)\\.js$)|(?:shCore\\.js$)|(?:shLegacy\\.js$)|(?:angular([^.]*)\\.js$)|(?:react(-[^.]*)?\\.js$)|(?:flow-typed/.*\\.js$)|(?:modernizr\\-\\d\\.\\d+(\\.\\d+)?\\.js$)|(?:modernizr\\.custom\\.\\d+\\.js$)|(?:knockout-(\\d+\\.){3}(debug\\.)?js$)|(?:docs?/_?(build|themes?|templates?|static)/)|(?:admin_media/)|(?:env/)|(?:fabfile\\.py$)|(?:waf$)|(?:\\.osx$)|(?:Carthage/)|(?:Sparkle/)|(?:Crashlytics\\.framework/)|(?:Fabric\\.framework/)|(?:BuddyBuildSDK\\.framework/)|(?:Realm\\.framework)|(?:RealmSwift\\.framework)|(?:\\.gitattributes$)|(?:\\.gitignore$)|(?:\\.gitmodules$)|(?:gradlew$)|(?:gradlew\\.bat$)|(?:gradle/wrapper/)|(?:mvnw$)|(?:mvnw\\.cmd$)|(?:\\.mvn/wrapper/)|(?:jquery([^.]*)\\.validate(\\.unobtrusive)?\\.js$)|(?:jquery([^.]*)\\.unobtrusive\\-ajax\\.js$)|(?:[Mm]icrosoft([Mm]vc)?([Aa]jax|[Vv]alidation)(\\.debug)?\\.js$)|(?:[Pp]ackages\\/.+\\.\\d+\\/)|(?:extjs/.*?\\.js$)|(?:extjs/.*?\\.xml$)|(?:extjs/.*?\\.txt$)|(?:extjs/.*?\\.html$)|(?:extjs/.*?\\.properties$)|(?:extjs/\\.sencha/)|(?:extjs/docs/)|(?:extjs/builds/)|(?:extjs/cmd/)|(?:extjs/examples/)|(?:extjs/locale/)|(?:extjs/packages/)|(?:extjs/plugins/)|(?:extjs/resources/)|(?:extjs/src/)|(?:extjs/welcome/)|(?:html5shiv\\.js$)|(?:[Tt]ests?/fixtures/)|(?:[Ss]pecs?/fixtures/)|(?:cordova([^.]*)\\.js$)|(?:cordova\\-\\d\\.\\d(\\.\\d)?\\.js$)|(?:foundation(\\..*)?\\.js$)|(?:Vagrantfile$)|(?:\\.[Dd][Ss]_[Ss]tore$)|(?:inst/extdata/)|(?:octicons\\.css)|(?:sprockets-octicons\\.scss)|(?:activator$)|(?:activator\\.bat$)|(?:proguard\\.pro$)|(?:proguard-rules\\.pro$)|(?:puphpet/)|(?:\\.google_apis/)|(?:Jenkinsfile$)|(?:\\.gitpod\\.Dockerfile$)|(?:\\.github/)|(?:\\.obsidian/)|(?:\\.teamcity/)|(?:xvba_modules/)))",
+  "enryTest": [
+    "(^|/)tests/.*Test\\.php$",
+    "(^|/)test/.*Test(s?)\\.java$",
+    "(^|/)test(/|/.*/)Test.*\\.java$",
+    "(^|/)test/.*(Test(s?)|Spec(s?))\\.scala$",
+    "(^|/)test_.*\\.py$",
+    "(^|/).*_test\\.go$",
+    "(^|/).*_(test|spec)\\.rb$",
+    "(^|/).*Test(s?)\\.cs$",
+    "(^|/).*\\.(test|spec)\\.(ts|tsx|js)$"
+  ],
+  "secretBasenames": [
+    ".htpasswd",
+    ".netrc",
+    ".npmrc",
+    ".pgpass",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "id_rsa"
+  ],
+  "secretExts": [
+    ".har",
+    ".jks",
+    ".kdbx",
+    ".key",
+    ".keystore",
+    ".p12",
+    ".pem",
+    ".pfx",
+    ".tfstate",
+    ".tfvars"
+  ],
+  "secretSuffixes": [
+    ".tfstate.backup",
+    ".tfvars.json"
+  ],
+  "cases": [
+    {
+      "path": "package-lock.json",
+      "reason": "lockfile"
+    },
+    {
+      "path": "apps/web/package-lock.json",
+      "reason": "lockfile"
+    },
+    {
+      "path": "package.json",
+      "reason": ""
+    },
+    {
+      "path": "go.mod",
+      "reason": ""
+    },
+    {
+      "path": "go.sum",
+      "reason": "lockfile"
+    },
+    {
+      "path": "yarn.lock",
+      "reason": "lockfile"
+    },
+    {
+      "path": "Cargo.lock",
+      "reason": "lockfile"
+    },
+    {
+      "path": "poetry.lock",
+      "reason": "lockfile"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "reason": "lockfile"
+    },
+    {
+      "path": "src/app.ts",
+      "reason": ""
+    },
+    {
+      "path": "src/app.tsx",
+      "reason": ""
+    },
+    {
+      "path": "server/main.go",
+      "reason": ""
+    },
+    {
+      "path": "lib/handler.py",
+      "reason": ""
+    },
+    {
+      "path": "Dockerfile",
+      "reason": ""
+    },
+    {
+      "path": "Makefile",
+      "reason": ""
+    },
+    {
+      "path": "config.yaml",
+      "reason": ""
+    },
+    {
+      "path": "config.json",
+      "reason": ""
+    },
+    {
+      "path": ".env.example",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "logo.svg",
+      "reason": ""
+    },
+    {
+      "path": "unknown.xyz",
+      "reason": ""
+    },
+    {
+      "path": "README.md",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "docs/guide.MD",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "web/app.css",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "web\\styles\\theme.SCSS",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "logo.png",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "README.md/handler.ts",
+      "reason": ""
+    },
+    {
+      "path": "notes.txt",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "CHANGELOG",
+      "reason": ""
+    },
+    {
+      "path": "LICENSE",
+      "reason": ""
+    },
+    {
+      "path": "src/app.test.ts",
+      "reason": "test"
+    },
+    {
+      "path": "src/app.spec.tsx",
+      "reason": "test"
+    },
+    {
+      "path": "src/app.test.js",
+      "reason": "test"
+    },
+    {
+      "path": "pkg/x_test.go",
+      "reason": "test"
+    },
+    {
+      "path": "test_api.py",
+      "reason": "test"
+    },
+    {
+      "path": "spec/models/user_spec.rb",
+      "reason": "test"
+    },
+    {
+      "path": "src/FooTest.java",
+      "reason": ""
+    },
+    {
+      "path": "test/FooTest.java",
+      "reason": "test"
+    },
+    {
+      "path": "tests/FooTest.php",
+      "reason": "test"
+    },
+    {
+      "path": "app/UserTest.php",
+      "reason": "test"
+    },
+    {
+      "path": "app/UserTestCase.php",
+      "reason": "test"
+    },
+    {
+      "path": "app/user_test.php",
+      "reason": "test"
+    },
+    {
+      "path": "Test.php",
+      "reason": ""
+    },
+    {
+      "path": "Tests/FooTests.cs",
+      "reason": "test"
+    },
+    {
+      "path": "src/test/scala/FooSpec.scala",
+      "reason": "test"
+    },
+    {
+      "path": "test/helper.ts",
+      "reason": "test"
+    },
+    {
+      "path": "tests/helper.ts",
+      "reason": "test"
+    },
+    {
+      "path": "test",
+      "reason": ""
+    },
+    {
+      "path": "tests",
+      "reason": ""
+    },
+    {
+      "path": "src/tests/helper.ts",
+      "reason": "test"
+    },
+    {
+      "path": "/abs/tests/helper.ts",
+      "reason": ""
+    },
+    {
+      "path": "/abs/test/helper.ts",
+      "reason": ""
+    },
+    {
+      "path": "e2e/login.ts",
+      "reason": "test"
+    },
+    {
+      "path": "apps/web/e2e/login.ts",
+      "reason": "test"
+    },
+    {
+      "path": "cypress/support/commands.ts",
+      "reason": "test"
+    },
+    {
+      "path": "playwright/fixtures.ts",
+      "reason": "test"
+    },
+    {
+      "path": "src/__tests__/a.ts",
+      "reason": "test"
+    },
+    {
+      "path": "src/__snapshots__/a.snap",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "cypress.cy.js",
+      "reason": ""
+    },
+    {
+      "path": "src/app.cy.ts",
+      "reason": ""
+    },
+    {
+      "path": "vitest.config.ts",
+      "reason": "test"
+    },
+    {
+      "path": "jest.config.js",
+      "reason": "test"
+    },
+    {
+      "path": "apps/web/playwright.config.ts",
+      "reason": "test"
+    },
+    {
+      "path": "conftest.py",
+      "reason": "test"
+    },
+    {
+      "path": "tsconfig.spec.json",
+      "reason": "test"
+    },
+    {
+      "path": "tsconfig.json",
+      "reason": ""
+    },
+    {
+      "path": "node_modules/react/index.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "web/node_modules/x/y.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "vendor/github.com/x/y.go",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "dist/bundle.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "build/out.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "/abs/build/out.js",
+      "reason": ""
+    },
+    {
+      "path": "src/build.ts",
+      "reason": ""
+    },
+    {
+      "path": "out/index.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "target/x.class",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "cmake-build-debug/main.o",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "cmake-builder/main.c",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".next/server/page.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".venv/lib/x.py",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "third_party/lib.go",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "third-party/lib.go",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "Godeps/_workspace/x.go",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "reason": ""
+    },
+    {
+      "path": "ci/.github/workflows/deploy.yaml",
+      "reason": ""
+    },
+    {
+      "path": ".github/CODEOWNERS",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".github/dependabot.yml",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "Jenkinsfile",
+      "reason": ""
+    },
+    {
+      "path": "ci/Jenkinsfile",
+      "reason": ""
+    },
+    {
+      "path": ".vscode/settings.json",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".gitignore",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".gitattributes",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "types/index.d.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "src/global.d.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "jquery.min.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "static/jquery-3.6.0.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "cache/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "env/x.py",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "django/core/cache/backends/filebased.py",
+      "reason": ""
+    },
+    {
+      "path": "src/cache/foo.py",
+      "reason": ""
+    },
+    {
+      "path": "src\\cache\\foo.py",
+      "reason": ""
+    },
+    {
+      "path": "src/cmd/go/internal/cache/cache.go",
+      "reason": ""
+    },
+    {
+      "path": "tools/cache/reflector.go",
+      "reason": ""
+    },
+    {
+      "path": "activesupport/lib/active_support/cache/redis_cache_store.rb",
+      "reason": ""
+    },
+    {
+      "path": "cache/node_modules/pkg/index.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "node_modules/pkg/cache/index.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "cache/vendor/pkg/lib.go",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "cache/react.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "cache/.cache/data.py",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "cache/__pycache__/data.py",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".pnp/cache/pkg/index.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "web/.pnp/cache/pkg/index.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "web\\.pnp\\cache\\pkg\\index.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".pnp/src/helper.js",
+      "reason": ""
+    },
+    {
+      "path": "cache/.pnp/cache/pkg/index.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "docs/_build/index.html",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "testdata/sample.json",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "deps/x.c",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "Dependencies/x.c",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "debian/rules",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "gradlew",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "mvnw",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "Vagrantfile",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "fabfile.py",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "src/react.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "src/react-dom.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "src/Chart.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "packages/foo.1.2/lib.cs",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "src/api.pb.go",
+      "reason": "generated"
+    },
+    {
+      "path": "src/api_pb2.py",
+      "reason": "generated"
+    },
+    {
+      "path": "src/schema.gen.ts",
+      "reason": "generated"
+    },
+    {
+      "path": "src/types.generated.ts",
+      "reason": "generated"
+    },
+    {
+      "path": "zz_generated.deepcopy.go",
+      "reason": "generated"
+    },
+    {
+      "path": "app.min.css",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "app.bundle.js",
+      "reason": "generated"
+    },
+    {
+      "path": "model.freezed.dart",
+      "reason": "generated"
+    },
+    {
+      "path": "db/migrations/20240101120000_create_users.sql",
+      "reason": "database migration"
+    },
+    {
+      "path": "db/migrations/0001_init.sql",
+      "reason": "database migration"
+    },
+    {
+      "path": "db/migrations/001_init.sql",
+      "reason": "database migration"
+    },
+    {
+      "path": "db/migrations/V1__init.sql",
+      "reason": "database migration"
+    },
+    {
+      "path": "db/migrations/V1.2__x.sql",
+      "reason": "database migration"
+    },
+    {
+      "path": "migrations/version20240101120000.php",
+      "reason": "database migration"
+    },
+    {
+      "path": "prisma/migrations/20240101_init/migration.sql",
+      "reason": "database migration"
+    },
+    {
+      "path": "prisma/migrations/init/migration.sql",
+      "reason": ""
+    },
+    {
+      "path": "db/migrations/README.md",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "db/migrations/helpers.ts",
+      "reason": ""
+    },
+    {
+      "path": "src/migrate/20240101_x.ts",
+      "reason": "database migration"
+    },
+    {
+      "path": "migrations.sql",
+      "reason": ""
+    },
+    {
+      "path": "20240101_x.sql",
+      "reason": ""
+    },
+    {
+      "path": "data/db/WiredTiger",
+      "reason": "database data"
+    },
+    {
+      "path": "data/db/collection-0.wt",
+      "reason": "database data"
+    },
+    {
+      "path": "pgdata/base/16384/1259",
+      "reason": "database data"
+    },
+    {
+      "path": "pgdata/base/16384/1259_fsm",
+      "reason": "database data"
+    },
+    {
+      "path": "pgdata/base/16384/1259.1",
+      "reason": "database data"
+    },
+    {
+      "path": "pgdata/global/1262",
+      "reason": "database data"
+    },
+    {
+      "path": "pgdata/pg_wal/000000010000000000000001",
+      "reason": "database data"
+    },
+    {
+      "path": "mysql/ibdata1",
+      "reason": "database data"
+    },
+    {
+      "path": "mysql/ib_logfile0",
+      "reason": "database data"
+    },
+    {
+      "path": "mysql/mysql-bin.000001",
+      "reason": "database data"
+    },
+    {
+      "path": "redis/appendonly.aof",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.sqlite-wal",
+      "reason": "database data"
+    },
+    {
+      "path": "dump.bson",
+      "reason": "database data"
+    },
+    {
+      "path": "backup.pgdump",
+      "reason": "database data"
+    },
+    {
+      "path": "base/a/1259",
+      "reason": ""
+    },
+    {
+      "path": "global/x1",
+      "reason": ""
+    },
+    {
+      "path": "src/app.ts~",
+      "reason": "editor backup"
+    },
+    {
+      "path": "src/.#app.ts",
+      "reason": "editor backup"
+    },
+    {
+      "path": "src/#app.ts#",
+      "reason": "editor backup"
+    },
+    {
+      "path": "src/app.ts.bak",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "src/app.ts.bak.1",
+      "reason": "editor backup"
+    },
+    {
+      "path": "src/app.orig.2",
+      "reason": "editor backup"
+    },
+    {
+      "path": "src/app.ts.old",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "src/app.ts.1",
+      "reason": ""
+    },
+    {
+      "path": "SHA256SUMS",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "dist/sha512sums",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "checksums.txt",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "src/STYLE.CSS",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a.b.c.md",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": ".md",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "noext",
+      "reason": ""
+    },
+    {
+      "path": "dir.md/file",
+      "reason": ""
+    },
+    {
+      "path": "dir/.hidden",
+      "reason": ""
+    },
+    {
+      "path": ".env",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "config/.env.production",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "deploy/prod.env",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "envoy.yaml",
+      "reason": ""
+    },
+    {
+      "path": "src/environment.ts",
+      "reason": ""
+    },
+    {
+      "path": "infra/terraform.tfstate.backup",
+      "reason": "prose, stylesheet or asset",
+      "secret": true
+    },
+    {
+      "path": "infra/prod.TFVARS.JSON",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "keys\\id_rsa",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "id_rsa.pub",
+      "reason": ""
+    },
+    {
+      "path": "certs/server.PEM",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/.netrc",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/netrc",
+      "reason": ""
+    },
+    {
+      "path": "home/.htpasswd",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "home/.netrc",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "home/.npmrc",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "home/.pgpass",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "home/id_dsa",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "home/id_ecdsa",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "home/id_ed25519",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "home/id_rsa",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.har",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.jks",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.kdbx",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.key",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.keystore",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.p12",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.pem",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.pfx",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.tfstate",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.tfvars",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "a/x.tfstate.backup",
+      "reason": "prose, stylesheet or asset",
+      "secret": true
+    },
+    {
+      "path": "a/x.tfvars.json",
+      "reason": "",
+      "secret": true
+    },
+    {
+      "path": "pkg/conda-lock.yml",
+      "reason": "lockfile"
+    },
+    {
+      "path": "pkg/go.sum",
+      "reason": "lockfile"
+    },
+    {
+      "path": "pkg/gradle.lockfile",
+      "reason": "lockfile"
+    },
+    {
+      "path": "pkg/npm-shrinkwrap.json",
+      "reason": "lockfile"
+    },
+    {
+      "path": "pkg/package-lock.json",
+      "reason": "lockfile"
+    },
+    {
+      "path": "pkg/packages.lock.json",
+      "reason": "lockfile"
+    },
+    {
+      "path": "pkg/pnpm-lock.yaml",
+      "reason": "lockfile"
+    },
+    {
+      "path": "src/file.min.js",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "src/file.min.mjs",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.min.css",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "src/file.bundle.js",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.pb.go",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file_pb2.py",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file_pb2_grpc.py",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.pb.cc",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.pb.h",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.g.cs",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.designer.cs",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.g.dart",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.ts",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.tsx",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.go",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.py",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.js",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.mjs",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.dart",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.rs",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.kt",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.cs",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.rb",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gen.php",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file_pb.js",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file_pb.d.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "src/file_pb.ts",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file_grpc_pb.js",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file_grpc_pb.d.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "src/file_pb2.pyi",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file_pb2_grpc.pyi",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.pb.swift",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.grpc.swift",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.freezed.dart",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.mocks.dart",
+      "reason": "generated"
+    },
+    {
+      "path": "src/file.gr.dart",
+      "reason": "generated"
+    },
+    {
+      "path": "a/.angular/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".angular",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.aws-sam/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".aws-sam",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".cache",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.docusaurus/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".docusaurus",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.eggs/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".eggs",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.expo/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".expo",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.git/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".git",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.gradle/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".gradle",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.hg/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".hg",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.hypothesis/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".hypothesis",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.mypy_cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".mypy_cache",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.netlify/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".netlify",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.next/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".next",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.nox/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".nox",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.nuxt/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".nuxt",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.nyc_output/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".nyc_output",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.output/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".output",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.parcel-cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".parcel-cache",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.pytest_cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".pytest_cache",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.ruff_cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".ruff_cache",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.serverless/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".serverless",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.sst/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".sst",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.svelte-kit/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".svelte-kit",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.svn/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".svn",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.terraform/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".terraform",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.terragrunt-cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".terragrunt-cache",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.tox/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".tox",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.turbo/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".turbo",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.venv/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".venv",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.vercel/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".vercel",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.vite/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".vite",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/.wrangler/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".wrangler",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/Pods/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "Pods",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/__pycache__/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "__pycache__",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/__snapshots__/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "__snapshots__",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/cdk.out/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "cdk.out",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/jspm_packages/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "jspm_packages",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/site-packages/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "site-packages",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "a/venv/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "venv",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".nx/cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "app/.nx/cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".nx\\cache\\x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".nx/cacheable/x.ts",
+      "reason": ""
+    },
+    {
+      "path": ".pnp/cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "app/.pnp/cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".pnp\\cache\\x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".pnp/cacheable/x.ts",
+      "reason": ""
+    },
+    {
+      "path": ".yarn/cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "app/.yarn/cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".yarn\\cache\\x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": ".yarn/cacheable/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "tmp/cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "app/tmp/cache/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "tmp\\cache\\x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "tmp/cacheable/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "a/Debug/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "/abs/Debug/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "a/Release/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "/abs/Release/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "a/build/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "/abs/build/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "a/cjs/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "/abs/cjs/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "a/obj/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "/abs/obj/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "a/out/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "/abs/out/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "a/target/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "/abs/target/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "a/umd/x.ts",
+      "reason": "vendored or build output"
+    },
+    {
+      "path": "/abs/umd/x.ts",
+      "reason": ""
+    },
+    {
+      "path": "a/__tests__/x.ts",
+      "reason": "test"
+    },
+    {
+      "path": "a/cypress/x.ts",
+      "reason": "test"
+    },
+    {
+      "path": "a/e2e/x.ts",
+      "reason": "test"
+    },
+    {
+      "path": "a/playwright/x.ts",
+      "reason": "test"
+    },
+    {
+      "path": "a/conftest.py",
+      "reason": "test"
+    },
+    {
+      "path": "a/jest.config.js",
+      "reason": "test"
+    },
+    {
+      "path": "a/jest.config.ts",
+      "reason": "test"
+    },
+    {
+      "path": "a/jest.setup.js",
+      "reason": "test"
+    },
+    {
+      "path": "a/jest.setup.ts",
+      "reason": "test"
+    },
+    {
+      "path": "a/karma.conf.js",
+      "reason": "test"
+    },
+    {
+      "path": "a/phpunit.xml",
+      "reason": "test"
+    },
+    {
+      "path": "a/phpunit.xml.dist",
+      "reason": "test"
+    },
+    {
+      "path": "a/playwright.config.ts",
+      "reason": "test"
+    },
+    {
+      "path": "a/tsconfig.spec.json",
+      "reason": "test"
+    },
+    {
+      "path": "a/vitest.config.js",
+      "reason": "test"
+    },
+    {
+      "path": "a/vitest.config.ts",
+      "reason": "test"
+    },
+    {
+      "path": "a/x.backup.3",
+      "reason": "editor backup"
+    },
+    {
+      "path": "a/x.bak.3",
+      "reason": "editor backup"
+    },
+    {
+      "path": "a/x.bkp.3",
+      "reason": "editor backup"
+    },
+    {
+      "path": "a/x.old.3",
+      "reason": "editor backup"
+    },
+    {
+      "path": "a/x.orig.3",
+      "reason": "editor backup"
+    },
+    {
+      "path": "data/appendonly.aof",
+      "reason": "database data"
+    },
+    {
+      "path": "data/ibdata1",
+      "reason": "database data"
+    },
+    {
+      "path": "data/ibtmp1",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_control",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_version",
+      "reason": "database data"
+    },
+    {
+      "path": "data/postmaster.opts",
+      "reason": "database data"
+    },
+    {
+      "path": "data/postmaster.pid",
+      "reason": "database data"
+    },
+    {
+      "path": "data/wiredtiger",
+      "reason": "database data"
+    },
+    {
+      "path": "data/wiredtiger.lock",
+      "reason": "database data"
+    },
+    {
+      "path": "data/wiredtiger.turtle",
+      "reason": "database data"
+    },
+    {
+      "path": "data/wiredtigerlog.42",
+      "reason": "database data"
+    },
+    {
+      "path": "data/wiredtigerlog.x",
+      "reason": ""
+    },
+    {
+      "path": "data/wiredtigerpreplog.42",
+      "reason": "database data"
+    },
+    {
+      "path": "data/wiredtigerpreplog.x",
+      "reason": ""
+    },
+    {
+      "path": "data/ib_logfile42",
+      "reason": "database data"
+    },
+    {
+      "path": "data/ib_logfilex",
+      "reason": ""
+    },
+    {
+      "path": "data/mysql-bin.42",
+      "reason": "database data"
+    },
+    {
+      "path": "data/mysql-bin.x",
+      "reason": ""
+    },
+    {
+      "path": "data/binlog.42",
+      "reason": "database data"
+    },
+    {
+      "path": "data/binlog.x",
+      "reason": ""
+    },
+    {
+      "path": "data/x.accdb",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.aof",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.bson",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.db-journal",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.db-shm",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.db-wal",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.dbf",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.duckdb",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.dump",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.fdb",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.ibd",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.ldb",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.ldf",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.mdb",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.mdbx",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.mdf",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.myd",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.myi",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.ndf",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.pgdump",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.realm",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.sqlite-journal",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.sqlite-shm",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.sqlite-wal",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.sqlite3-journal",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.sqlite3-shm",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.sqlite3-wal",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.sst",
+      "reason": "database data"
+    },
+    {
+      "path": "data/x.wt",
+      "reason": "database data"
+    },
+    {
+      "path": "data/#innodb_redo/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/#innodb_temp/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/appendonlydir/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/diagnostic.data/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_clog/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_commit_ts/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_dynshmem/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_logical/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_multixact/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_notify/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_replslot/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_serial/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_snapshots/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_stat_tmp/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_subtrans/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_tblspc/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_twophase/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_wal/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_xact/x",
+      "reason": "database data"
+    },
+    {
+      "path": "data/pg_xlog/x",
+      "reason": "database data"
+    },
+    {
+      "path": "a/x.7z",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.a",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.aac",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.adoc",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.ai",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.arb",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.avi",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.avif",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.avro",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.backup",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.bak",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.beam",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.bin",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.bkp",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.bmp",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.bz2",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.class",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.cpuprofile",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.css",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.csv",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.dat",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.db",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.diff",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.dll",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.dmp",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.dylib",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.ear",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.eot",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.err",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.exe",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.fig",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.flac",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.gem",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.geojson",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.gif",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.gz",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.h5",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.hdf5",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.heapsnapshot",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.heic",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.heif",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.hprof",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.icns",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.ico",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.iml",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.import",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.jar",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.jpeg",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.jpg",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.jsonl",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.lcov",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.less",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.lib",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.lock",
+      "reason": "lockfile"
+    },
+    {
+      "path": "a/x.log",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.m4a",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.map",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.markdown",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.md",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.mdc",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.mdmp",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.mkv",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.mmd",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.mo",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.mov",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.mp3",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.mp4",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.mtl",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.nar",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.ndjson",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.node",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.npy",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.npz",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.nupkg",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.o",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.obj",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.ogg",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.old",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.opus",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.orc",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.orig",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.otf",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.out",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.parquet",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.part",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.patch",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pcss",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pdb",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pdf",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pickle",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pid",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pkl",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.png",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.po",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.postcss",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pot",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pprof",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.prof",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.psd",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.puml",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pyc",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pyd",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.pyo",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.rar",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.rbi",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.rdb",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.rej",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.rlib",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.rmeta",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.rst",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.rtf",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.sass",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.scss",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.sketch",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.so",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.sqlite",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.sqlite3",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.srt",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.styl",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.stylus",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.swn",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.swo",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.swp",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.tar",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.temp",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.tgz",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.tmp",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.tsbuildinfo",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.tsv",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.ttf",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.txt",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.uid",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.vtt",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.war",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.wasm",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.wav",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.webm",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.webp",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.whl",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.woff",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.woff2",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.xlf",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.xliff",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.xz",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.zip",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/x.zst",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/sha256sums",
+      "reason": "prose, stylesheet or asset"
+    },
+    {
+      "path": "a/sha512sums",
+      "reason": "prose, stylesheet or asset"
+    }
+  ]
+}
